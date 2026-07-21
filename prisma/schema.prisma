@@ -1,0 +1,82 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Visibility {
+  PUBLIC
+  PASSWORD_PROTECTED
+}
+
+enum OpinionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Admin {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  sessions     Session[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Session {
+  id                String        @id @default(uuid())
+  code              String        @unique // 6 karakterli benzersiz oturum kodu
+  title             String
+  description       String
+  question          String
+  status            String        @default("active") // active, paused
+  visibility        Visibility    @default(PUBLIC)
+  passwordHash      String?
+  passwordUpdatedAt DateTime?
+  analysis          Json?         // PCA, kümeleme ve köprü cümle çıktılarının JSON olarak saklanacağı alan
+  creatorId         String?
+  creator           Admin?        @relation(fields: [creatorId], references: [id], onDelete: SetNull)
+  participants      Participant[]
+  opinions          Opinion[]
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+}
+
+model Participant {
+  id            String    @id @default(uuid())
+  nickname      String
+  justification String?
+  isBot         Boolean   @default(false)
+  sessionId     String
+  session       Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  votes         Vote[]
+  joinedAt      DateTime  @default(now())
+}
+
+model Opinion {
+  id        String        @id @default(uuid())
+  text      String
+  author    String
+  status    OpinionStatus @default(PENDING)
+  isBot     Boolean       @default(false)
+  sessionId String
+  session   Session       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  votes     Vote[]
+  timestamp DateTime      @default(now())
+}
+
+model Vote {
+  id            String      @id @default(uuid())
+  participantId String
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  opinionId     String
+  opinion       Opinion     @relation(fields: [opinionId], references: [id], onDelete: Cascade)
+  value         Int         // 1 (katılıyorum), -1 (katılmıyorum), 0 (kararsız)
+  createdAt     DateTime    @default(now())
+
+  @@unique([participantId, opinionId])
+}
