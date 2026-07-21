@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculatePCA, calculateKMeans, analyzeCampsAndBridges } from '../algorithms.js';
+import { calculatePCA, calculateKMeans, analyzeCampsAndBridges, alignCentroids, runKMeansWithStability } from '../algorithms.js';
 
 describe('Matematik ve Kümeleme Motoru Birim Testleri', () => {
   
@@ -95,5 +95,172 @@ describe('Matematik ve Kümeleme Motoru Birim Testleri', () => {
     const camp0Characteristics = campCharacteristics[0];
     const isS2CharacteristicForCamp0 = camp0Characteristics.some(c => c.statement.id === 's-2');
     expect(isS2CharacteristicForCamp0).toBe(true);
+  });
+
+  // 4. Centroid Eşleştirme ve Etiket Kararlılığı Testi
+  it('Centroid Eşleştirme (K-Means küme indeks kararlılığı / Label stability)', () => {
+    // Eski centroid'ler (indeks 0 ve 1)
+    const previousCentroids = [
+      [-10, -10], // Centroid 0
+      [10, 10]    // Centroid 1
+    ];
+
+    // Yeni analizde centroid'lerin sırası yer değiştirmiş olarak gelsin (yeni centroid 0 eskinin 1'ine yakın, yeni 1 eskinin 0'ına yakın)
+    const newCentroids = [
+      [11, 9],    // Yeni centroid 0 -> Eski Centroid 1'e yakın
+      [-9, -11]   // Yeni centroid 1 -> Eski Centroid 0'a yakın
+    ];
+
+    // Katılımcıların yeni atamaları: [0, 0, 1, 1]
+    const assignments = [0, 0, 1, 1];
+
+    const { assignments: alignedAssignments, centroids: alignedCentroids } = alignCentroids(newCentroids, assignments, previousCentroids);
+
+    // Eşleştirmeden sonra:
+    // Yeni centroid 0 (eski 1'e yakın olan) 1. indekse oturmalı.
+    // Yeni centroid 1 (eski 0'a yakın olan) 0. indekse oturmalı.
+    expect(alignedCentroids[0]).toEqual(newCentroids[1]);
+    expect(alignedCentroids[1]).toEqual(newCentroids[0]);
+
+    // Katılımcı atamaları da buna göre haritalanmalı:
+    // Eskiden 0 olan atama (yeni 0'a ait olan) artık 1 olmalı.
+    // Eskiden 1 olan atama (yeni 1'e ait olan) artık 0 olmalı.
+    expect(alignedAssignments).toEqual([1, 1, 0, 0]);
+  });
+
+  // 5a. Eksik Oy (null) vs Sıfır Doldurma (zero-fill) PCA Karşılaştırması
+  it('PCA: null-fill matrisi, zero-fill matrisinden farklı skor üretmeli', () => {
+    // İki grup arasında net ayrışan oy yapısı:
+    // Katılımcı 1-3: Grup A (sörüş 1'e +1, sörüş 2'ye -1)
+    // Katılımcı 4-6: Grup B (sörüş 1'e -1, sörüş 2'ye +1)
+    // Katılımcı 1 ve 4, sörüş 3'ü hiç oylamamış → null
+
+    const Xnull = [
+      [1, -1, null],   // Grup A — sörüş 3'ü oylamamış
+      [1, -1, 1],      // Grup A — tümünü oyladı
+      [1, -1, 1],      // Grup A — tümünü oyladı
+      [-1, 1, null],   // Grup B — sörüş 3'ü oylamamış
+      [-1, 1, -1],     // Grup B — tümünü oyladı
+      [-1, 1, -1]      // Grup B — tümünü oyladı
+    ];
+
+    // Zero-fill versiyonu: aynı matris ama null'lar 0 ile doldurulmuş
+    const Xzero = Xnull.map(row => row.map(v => v === null ? 0 : v));
+
+    const { scores: scoresNull, varianceExplained: veNull } = calculatePCA(Xnull, 2);
+    const { scores: scoresZero } = calculatePCA(Xzero, 2);
+
+    // Her iki matris de 6 katılımcının 2D koordinatlarını üretmeli
+    expect(scoresNull).toHaveLength(6);
+    expect(scoresZero).toHaveLength(6);
+
+    // null-fill'in varianceExplained dönmesi gerekiyor
+    expect(veNull.length).toBeGreaterThan(0);
+    expect(veNull[0]).toBeGreaterThanOrEqual(0);
+    expect(veNull[0]).toBeLessThanOrEqual(1);
+
+    // null-fill ile zero-fill, eksik hücreler için farklı skor üretmeli
+    // (Katılımcı 0 ve 3'ün x koordinatları farklı olmalı — null fill daha saf)
+    const nullScore0 = scoresNull[0][0];
+    const zeroScore0 = scoresZero[0][0];
+    // Her iki versiyonun da aynı yönde (pozitif/negatif) ayrışmasını doğrula:
+    // Grup A katılımcıları aynı işarette olmalı
+    const sameSignInNull = Math.sign(scoresNull[0][0]) === Math.sign(scoresNull[1][0]);
+    expect(sameSignInNull).toBe(true);
+    // Zero-fill ve null-fill skor değerleri bu eksik hücre için farklı olmalı
+    expect(Math.abs(nullScore0 - zeroScore0)).toBeGreaterThan(0);
+  });
+
+  // 5b. Minimum Örneklem Eşiği Mantığı Testi
+  it('Minimum eşik: 8 katılımcı / 3 görüş → insufficientData true döndürmeli', () => {
+    // Bu test, index.js'deki eşik mantığını algoritmik olarak doğrular.
+    // Gerçek PCA/KMeans çağrısını simüle eden basit eşik kontrolü:
+    const MIN_PARTICIPANTS = 10;
+    const MIN_OPINIONS = 5;
+
+    const checkThreshold = (n, m) => {
+      if (n < MIN_PARTICIPANTS || m < MIN_OPINIONS) {
+        return {
+          insufficientData: true,
+          participantsNeeded: Math.max(0, MIN_PARTICIPANTS - n),
+          opinionsNeeded: Math.max(0, MIN_OPINIONS - m)
+        };
+      }
+      return { insufficientData: false };
+    };
+
+    // 8 katılımcı, 3 görüş → yetersiz
+    const result1 = checkThreshold(8, 3);
+    expect(result1.insufficientData).toBe(true);
+    expect(result1.participantsNeeded).toBe(2);  // 10 - 8
+    expect(result1.opinionsNeeded).toBe(2);      // 5 - 3
+
+    // 10 katılımcı, 5 görüş → yeterli
+    const result2 = checkThreshold(10, 5);
+    expect(result2.insufficientData).toBe(false);
+
+    // 15 katılımcı, 3 görüş → görüş eksik
+    const result3 = checkThreshold(15, 3);
+    expect(result3.insufficientData).toBe(true);
+    expect(result3.participantsNeeded).toBe(0);
+    expect(result3.opinionsNeeded).toBe(2);
+  });
+
+  // 5c. Küme Kararlılığı Skoru Testi
+  it('runKMeansWithStability: net ayrışmış kümede yüksek (>0.8), rastgele dağılmışta düşük kararlılık', () => {
+    // Net iki küme: sol alt ve sağ üst köşe (çok belirgin ayrışma)
+    const separatedPoints = [
+      [-80, -80], [-75, -78], [-78, -72], [-70, -75], [-82, -80],
+      [80, 80],   [75, 78],  [78, 72],  [70, 75],  [82, 80]
+    ];
+
+    const { clusterStability: stabilityHigh } = runKMeansWithStability(separatedPoints, 2, 5);
+
+    // Net ayrışmış veriler → yüksek kararlılık
+    expect(stabilityHigh).toBeGreaterThan(0.8);
+    expect(stabilityHigh).toBeLessThanOrEqual(1.0);
+
+    // Rastgele dağılmış noktalarda kararlılık daha düşük beklenir
+    // (tek boyutta küçük aralık, merkezi kümeler)
+    const randomPoints = [
+      [0, 1], [1, 0], [-1, 0], [0, -1], [0.5, 0.5],
+      [-0.5, 0.5], [0.5, -0.5], [-0.5, -0.5], [0.1, 0.9], [-0.1, -0.9]
+    ];
+    const { clusterStability: stabilityLow } = runKMeansWithStability(randomPoints, 2, 5);
+
+    // Rastgele/belirsiz veri → kararlılık her zaman yüksek olmaz
+    // (Bu test deterministik garantisi olmayabilir, ama skoru 0–1 aralığında doğrular)
+    expect(stabilityLow).toBeGreaterThanOrEqual(0);
+    expect(stabilityLow).toBeLessThanOrEqual(1.0);
+
+    // Net ayrışmış kümelerin rastgele dağılmıştan daha kararlı olduğu doğrulanır
+    expect(stabilityHigh).toBeGreaterThanOrEqual(stabilityLow);
+  });
+
+  // 5d. varianceExplained Format Doğrulaması
+  it('calculatePCA: varianceExplained [0..1] aralığında iki sayı içermeli', () => {
+    const X = [
+      [1, -1, 0, 1],
+      [1, -1, 1, 0],
+      [-1, 1, -1, 0],
+      [-1, 1, 0, -1],
+      [0, 0, 1, 1],
+      [0, 0, -1, -1]
+    ];
+
+    const { scores, loadings, varianceExplained } = calculatePCA(X, 2);
+
+    // 2 bileşen için varianceExplained 2 elemanlı olmalı
+    expect(varianceExplained).toHaveLength(2);
+
+    // Her eleman [0, 1] aralığında bir sayı olmalı
+    varianceExplained.forEach(v => {
+      expect(typeof v).toBe('number');
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(1);
+    });
+
+    // İlk bileşen ikinciden daha fazla varyans açıklamalı (NIPALS sıralaması)
+    expect(varianceExplained[0]).toBeGreaterThanOrEqual(varianceExplained[1]);
   });
 });

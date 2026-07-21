@@ -74,10 +74,16 @@ export default function Participant({
     }
   };
 
-  const myPoint = analysis?.points?.find(pt => pt.id === participant.id);
+  const isInsufficient = analysis?.insufficientData === true;
+  const myPoint = isInsufficient ? undefined : analysis?.points?.find(pt => pt.id === participant.id);
   const myCamp = myPoint !== undefined ? analysis?.camps?.find(c => c.id === myPoint.campId) : null;
-  const renderPoints = analysis?.points || [];
-  const camps = analysis?.camps || [];
+  const renderPoints = isInsufficient ? [] : (analysis?.points || []);
+  const camps = isInsufficient ? [] : (analysis?.camps || []);
+
+  // Varyans uyarısı
+  const varianceExplained = analysis?.varianceExplained || [];
+  const totalVariance = varianceExplained.reduce((s, v) => s + v, 0);
+  const showVarianceNote = !isInsufficient && varianceExplained.length > 0 && totalVariance < 0.40;
 
   return (
     <div className="participant-layout">
@@ -305,67 +311,106 @@ export default function Participant({
         </p>
 
         <div className="chart-wrapper">
-          <svg viewBox="0 0 400 400" className="chart-svg">
-            {camps.map((camp, idx) => (
-              <circle
-                key={`glow-${idx}`}
-                cx={200 + camp.x * 2}
-                cy={200 - camp.y * 2}
-                r={camp.size > 0 ? 35 : 0}
-                fill={CAMP_COLORS[camp.id] || '#fff'}
-                opacity={0.08}
-              />
-            ))}
-
-            <line x1="200" y1="0" x2="200" y2="400" className="chart-axis" />
-            <line x1="0" y1="200" x2="400" y2="200" className="chart-axis" />
-            
-            {renderPoints.map((pt) => {
-              const isMe = pt.id === participant.id;
-              const cx = 200 + pt.x * 2;
-              const cy = 200 - pt.y * 2;
-              if (isMe) return null;
-              return (
-                <g key={pt.id}>
-                  <circle
-                    cx={cx}
-                    cy={cy}
-                    r={pt.isBot ? 4 : 5.5}
-                    fill={CAMP_COLORS[pt.campId] || '#999'}
-                    className="chart-point"
-                    opacity={pt.isBot ? 0.65 : 0.9}
-                  />
-                  <title>{pt.nickname} {pt.isBot ? '(Bot)' : ''}</title>
-                </g>
-              );
-            })}
-
-            {myPoint && (
-              <g>
+          {isInsufficient ? (
+            <svg viewBox="0 0 400 400" className="chart-svg">
+              <line x1="200" y1="0" x2="200" y2="400" className="chart-axis" />
+              <line x1="0" y1="200" x2="400" y2="200" className="chart-axis" />
+              <text x="200" y="180" fill="#a78bfa" fontSize="28" textAnchor="middle">📊</text>
+              <text x="200" y="210" fill="#c4b5fd" fontSize="11" fontWeight="600" textAnchor="middle">
+                Analiz için yeterli veri yok
+              </text>
+              <text x="200" y="230" fill="#7c3aed" fontSize="9.5" textAnchor="middle">
+                {`${analysis?.currentParticipants ?? 0} katılımcı, ${analysis?.currentOpinions ?? 0} görüş (min. 10 / 5 gerekli)`}
+              </text>
+            </svg>
+          ) : (
+            <svg viewBox="0 0 400 400" className="chart-svg">
+              {camps.map((camp, idx) => (
                 <circle
-                  cx={200 + myPoint.x * 2}
-                  cy={200 - myPoint.y * 2}
-                  r={8}
-                  fill="#ffffff"
-                  stroke={CAMP_COLORS[myPoint.campId] || '#a855f7'}
-                  strokeWidth={2}
-                  className="chart-point-self"
+                  key={`glow-${idx}`}
+                  cx={200 + camp.x * 2}
+                  cy={200 - camp.y * 2}
+                  r={camp.size > 0 ? 35 : 0}
+                  fill={CAMP_COLORS[camp.id] || '#fff'}
+                  opacity={0.08}
                 />
-                <text
-                  x={200 + myPoint.x * 2}
-                  y={200 - myPoint.y * 2 - 12}
-                  fill="#ffffff"
-                  fontSize="10"
-                  fontWeight="bold"
-                  textAnchor="middle"
-                  style={{ textShadow: '0 2px 4px #000' }}
-                >
-                  Siz ({participant.nickname})
-                </text>
-              </g>
-            )}
-          </svg>
+              ))}
+
+              <line x1="200" y1="0" x2="200" y2="400" className="chart-axis" />
+              <line x1="0" y1="200" x2="400" y2="200" className="chart-axis" />
+
+              {renderPoints.map((pt) => {
+                const isMe = pt.id === participant.id;
+                const cx = 200 + pt.x * 2;
+                const cy = 200 - pt.y * 2;
+                if (isMe) return null;
+                return (
+                  <g key={pt.id}>
+                    <circle
+                      cx={cx}
+                      cy={cy}
+                      r={pt.isBot ? 4 : 5.5}
+                      fill={CAMP_COLORS[pt.campId] || '#999'}
+                      className="chart-point"
+                      opacity={pt.isBot ? 0.65 : 0.9}
+                    />
+                    <title>{pt.nickname} {pt.isBot ? '(Bot)' : ''}</title>
+                  </g>
+                );
+              })}
+
+              {myPoint && (
+                <g>
+                  <circle
+                    cx={200 + myPoint.x * 2}
+                    cy={200 - myPoint.y * 2}
+                    r={8}
+                    fill="#ffffff"
+                    stroke={CAMP_COLORS[myPoint.campId] || '#a855f7'}
+                    strokeWidth={2}
+                    className="chart-point-self"
+                  />
+                  <text
+                    x={200 + myPoint.x * 2}
+                    y={200 - myPoint.y * 2 - 12}
+                    fill="#ffffff"
+                    fontSize="10"
+                    fontWeight="bold"
+                    textAnchor="middle"
+                    style={{ textShadow: '0 2px 4px #000' }}
+                  >
+                    Siz ({participant.nickname})
+                  </text>
+                </g>
+              )}
+
+            </svg>
+          )}
         </div>
+
+        {/* Varyans Uyarısı */}
+        {showVarianceNote && (
+          <div style={{
+            marginTop: '0.6rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            padding: '0.45rem 0.85rem',
+            background: 'rgba(234,179,8,0.1)',
+            border: '1px solid rgba(234,179,8,0.3)',
+            borderRadius: 'var(--radius-sm)',
+            fontSize: '0.76rem',
+            color: '#fbbf24',
+            textAlign: 'left'
+          }}>
+            <span>⚠️</span>
+            <span>
+              {lang === 'tr'
+                ? `Bu harita görüş çeşitliliğinin sınırlı bir kısmını yansıtıyor (%${Math.round(totalVariance * 100)})`
+                : `This map reflects only a limited portion of opinion diversity (${Math.round(totalVariance * 100)}%)`}
+            </span>
+          </div>
+        )}
 
         {/* Grup Bilgisi */}
         <div style={{ marginTop: '1.5rem', width: '100%', borderTop: '1px solid var(--border-light)', paddingTop: '1rem' }}>

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { HelpCircle, User, MessageSquareCode, Award, Lock, ShieldAlert, PlusCircle, LogIn } from 'lucide-react';
+import { t } from '../i18n';
 
-export default function Lobby({ question, onJoin, participantsCount }) {
+export default function Lobby({ question, onJoin, participantsCount, lang = 'tr' }) {
   const [activeTab, setActiveTab] = useState('join'); // 'join' veya 'create'
   const [nickname, setNickname] = useState('');
   const [justification, setJustification] = useState('');
@@ -21,10 +22,10 @@ export default function Lobby({ question, onJoin, participantsCount }) {
   // Giriş Yapma İşlemi
   const handleJoinSubmit = async (e) => {
     e.preventDefault();
-    if (!nickname.trim()) return setError('Lütfen bir rumuz girin.');
-    if (!sessionCode.trim()) return setError('Lütfen oturum kodunu girin.');
+    if (!nickname.trim()) return setError(lang === 'tr' ? 'Lütfen bir rumuz girin.' : 'Please enter a nickname.');
+    if (!sessionCode.trim()) return setError(lang === 'tr' ? 'Lütfen oturum kodunu girin.' : 'Please enter a table code.');
     if (justification.trim().length < 15) {
-      return setError('Gerekçeniz en az 15 karakter olmalıdır. Habermas\'ın "ideal konuşma durumu" ilkeleri gereği fikirlerinizin arkasındaki samimi nedeni duymak istiyoruz.');
+      return setError(t('lobbyValidationMinJustify', lang));
     }
 
     setError('');
@@ -41,9 +42,9 @@ export default function Lobby({ question, onJoin, participantsCount }) {
 
       if (!res.ok) {
         if (data.passwordRequired) {
-          return setError('Bu masaya erişmek için geçerli bir şifre girmelisiniz.');
+          return setError(lang === 'tr' ? 'Bu masaya erişmek için geçerli bir şifre girmelisiniz.' : 'You must enter a valid password to access this table.');
         }
-        return setError(data.message || 'Giriş yapılamadı.');
+        return setError(data.message || (lang === 'tr' ? 'Giriş yapılamadı.' : 'Failed to join.'));
       }
 
       // Giriş başarılıysa accessToken'ı kaydet
@@ -59,18 +60,18 @@ export default function Lobby({ question, onJoin, participantsCount }) {
         token: data.accessToken
       });
     } catch (err) {
-      setError('Sunucu bağlantısı sırasında bir hata oluştu.');
+      setError(lang === 'tr' ? 'Sunucu bağlantısı sırasında bir hata oluştu.' : 'An error occurred while connecting to the server.');
     }
   };
 
   // Yeni Masa Oluşturma İşlemi
   const handleCreateSubmit = async (e) => {
     e.preventDefault();
-    if (!newTitle.trim()) return setError('Masa başlığı gereklidir.');
-    if (!newQuestion.trim()) return setError('Müzakere sorusu gereklidir.');
-    if (!creatorNickname.trim()) return setError('Moderatör rumuzu gereklidir.');
+    if (!newTitle.trim()) return setError(lang === 'tr' ? 'Masa başlığı gereklidir.' : 'Table title is required.');
+    if (!newQuestion.trim()) return setError(lang === 'tr' ? 'Müzakere sorusu gereklidir.' : 'Core question is required.');
+    if (!creatorNickname.trim()) return setError(lang === 'tr' ? 'Moderatör rumuzu gereklidir.' : 'Moderator nickname is required.');
     if (newVisibility === 'PASSWORD_PROTECTED' && !newPassword) {
-      return setError('Şifreli oturumlar için şifre belirlemelisiniz.');
+      return setError(lang === 'tr' ? 'Şifreli oturumlar için şifre belirlemelisiniz.' : 'You must set a password for protected tables.');
     }
 
     setError('');
@@ -90,7 +91,7 @@ export default function Lobby({ question, onJoin, participantsCount }) {
       const data = await res.json();
 
       if (!res.ok) {
-        return setError(data.message || 'Masa oluşturulamadı.');
+        return setError(data.message || (lang === 'tr' ? 'Masa oluşturulamadı.' : 'Failed to create table.'));
       }
 
       // Moderatör token'ı ve oturum kodunu kaydet
@@ -100,20 +101,20 @@ export default function Lobby({ question, onJoin, participantsCount }) {
         localStorage.setItem(`session_token_${data.code}`, data.token);
       }
 
-      setSuccessMsg(`Masa '${data.code}' başarıyla oluşturuldu! Yönlendiriliyorsunuz...`);
+      setSuccessMsg(lang === 'tr' ? `Masa '${data.code}' başarıyla oluşturuldu! Yönlendiriliyorsunuz...` : `Table '${data.code}' created successfully! Redirecting...`);
       
       setTimeout(() => {
         onJoin({
           sessionCode: data.code,
           nickname: creatorNickname.trim(),
-          justification: 'Kurucu Moderatör',
+          justification: lang === 'tr' ? 'Kurucu Moderatör' : 'Founding Moderator',
           isModerator: true,
           token: data.moderatorToken
         });
       }, 1500);
 
     } catch (err) {
-      setError('Masa oluşturulurken bir hata oluştu.');
+      setError(lang === 'tr' ? 'Masa oluşturulurken bir hata oluştu.' : 'An error occurred while creating the table.');
     }
   };
 
@@ -121,42 +122,37 @@ export default function Lobby({ question, onJoin, participantsCount }) {
     <div className="lobby-layout">
       {/* Sol Panel: Giriş ve Fikir */}
       <div className="lobby-intro">
-        <h1>Müzakere Masası</h1>
-        <p>
-          Müzakere Masası, sosyal ağların kutuplaştıran algoritmalarına karşı, 
-          Jürgen Habermas'ın <strong>ideal konuşma durumu</strong> teorisini temel alan 
-          bir uzlaşı arayışıdır. Katılımcılar olarak amacımız çatışmak değil; 
-          birbirimizin gerekçelerini anlamak ve ortak paydaları (köprü cümlelerini) keşfetmektir.
-        </p>
+        <h1>{t('lobbyWelcome', lang)}</h1>
+        <p>{t('lobbyIntro', lang)}</p>
 
         <div className="concept-card-grid">
           <div className="concept-card">
             <div className="concept-card-icon">⚖️</div>
-            <div className="concept-card-title">Eşit Katılım</div>
-            <div className="concept-card-desc">Her ses eşit hakka sahiptir, hiyerarşi yoktur.</div>
+            <div className="concept-card-title">{t('lobbyConceptEqual', lang)}</div>
+            <div className="concept-card-desc">{t('lobbyConceptEqualDesc', lang)}</div>
           </div>
           <div className="concept-card">
             <div className="concept-card-icon">🧠</div>
-            <div className="concept-card-title">Gerekçelendirme</div>
-            <div className="concept-card-desc">"Ne düşündüğünüz" kadar "Neden düşündüğünüz" önemlidir.</div>
+            <div className="concept-card-title">{t('lobbyConceptJustify', lang)}</div>
+            <div className="concept-card-desc">{t('lobbyConceptJustifyDesc', lang)}</div>
           </div>
           <div className="concept-card">
             <div className="concept-card-icon">🤝</div>
-            <div className="concept-card-title">Samimiyet</div>
-            <div className="concept-card-desc">Manipülasyondan uzak, açık ve dürüst argüman üretimi.</div>
+            <div className="concept-card-title">{t('lobbyConceptSincerity', lang)}</div>
+            <div className="concept-card-desc">{t('lobbyConceptSincerityDesc', lang)}</div>
           </div>
         </div>
 
         {question && (
           <div className="question-highlight-box">
-            <h3>Güncel Müzakere Konusu</h3>
+            <h3>{t('lobbyActiveQuestion', lang)}</h3>
             <p>{question}</p>
           </div>
         )}
 
         <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1rem' }}>
           <Award size={18} className="text-secondary" />
-          <span>Şu anda aktif oturumlarda <strong>{participantsCount || 0}</strong> katılımcı bulunuyor.</span>
+          <span>{lang === 'tr' ? `Şu anda aktif oturumlarda ` : `Currently `}<strong>{participantsCount || 0}</strong>{lang === 'tr' ? ` katılımcı bulunuyor.` : ` active participants in deliberation.`}</span>
         </div>
       </div>
 
@@ -182,7 +178,7 @@ export default function Lobby({ question, onJoin, participantsCount }) {
               gap: '0.5rem'
             }}
           >
-            <LogIn size={16} /> Masaya Katıl
+            <LogIn size={16} /> {t('lobbyJoinTab', lang)}
           </button>
           <button
             onClick={() => { setActiveTab('create'); setError(''); }}
@@ -201,7 +197,7 @@ export default function Lobby({ question, onJoin, participantsCount }) {
               gap: '0.5rem'
             }}
           >
-            <PlusCircle size={16} /> Yeni Masa Aç
+            <PlusCircle size={16} /> {t('lobbyCreateTab', lang)}
           </button>
         </div>
 
@@ -237,7 +233,7 @@ export default function Lobby({ question, onJoin, participantsCount }) {
         {activeTab === 'join' && (
           <form onSubmit={handleJoinSubmit}>
             <div className="form-group">
-              <label className="form-label">Oturum Kodu</label>
+              <label className="form-label">{t('lobbyFormCode', lang)}</label>
               <input 
                 type="text" 
                 className="form-input" 
@@ -252,12 +248,12 @@ export default function Lobby({ question, onJoin, participantsCount }) {
             <div className="form-group">
               <label className="form-label">
                 <User size={14} style={{ marginRight: '0.25rem', verticalAlign: 'middle' }} />
-                Rumuz (Nickname)
+                {t('lobbyFormNick', lang)}
               </label>
               <input 
                 type="text" 
                 className="form-input" 
-                placeholder="Rumuzunuzu yazın..." 
+                placeholder={t('lobbyFormNickPlaceholder', lang)} 
                 value={nickname}
                 onChange={(e) => setNickname(e.target.value)}
                 maxLength={20}
@@ -268,11 +264,11 @@ export default function Lobby({ question, onJoin, participantsCount }) {
             <div className="form-group">
               <label className="form-label">
                 <MessageSquareCode size={14} style={{ marginRight: '0.25rem', verticalAlign: 'middle' }} />
-                Görüş Gerekçeniz (Süreçten Beklenti)
+                {t('lobbyFormJustify', lang)}
               </label>
               <textarea 
                 className="form-textarea" 
-                placeholder="Neden bu masadasınız? Habermas ilkeleri gereği gerekçenizi en az 15 karakterle açıklayın." 
+                placeholder={t('lobbyFormJustifyPlaceholder', lang)} 
                 value={justification}
                 onChange={(e) => setJustification(e.target.value)}
                 rows={3}
@@ -280,26 +276,26 @@ export default function Lobby({ question, onJoin, participantsCount }) {
                 required
               ></textarea>
               <span style={{ fontSize: '0.75rem', color: justification.length >= 15 ? 'var(--color-agree)' : 'var(--color-warning)', alignSelf: 'flex-end' }}>
-                {justification.length} / 200 karakter (en az 15)
+                {justification.length} / 200 {lang === 'tr' ? 'karakter (en az 15)' : 'characters (min 15)'}
               </span>
             </div>
 
             <div className="form-group">
               <label className="form-label">
                 <Lock size={14} style={{ marginRight: '0.25rem', verticalAlign: 'middle' }} />
-                Masa Şifresi (Eğer gerekliyse)
+                {t('lobbyFormPass', lang)}
               </label>
               <input 
                 type="password" 
                 className="form-input" 
-                placeholder="Şifreli masalar için şifre giriniz..." 
+                placeholder={t('lobbyFormPassPlaceholder', lang)} 
                 value={sessionPassword}
                 onChange={(e) => setSessionPassword(e.target.value)}
               />
             </div>
 
             <button type="submit" className="btn" style={{ width: '100%', marginTop: '1rem' }}>
-              Masaya Otur ve Müzakereye Başla
+              {t('lobbyBtnJoin', lang)}
             </button>
           </form>
         )}
@@ -308,11 +304,11 @@ export default function Lobby({ question, onJoin, participantsCount }) {
         {activeTab === 'create' && (
           <form onSubmit={handleCreateSubmit}>
             <div className="form-group">
-              <label className="form-label">Masa Başlığı</label>
+              <label className="form-label">{t('lobbyFormTitle', lang)}</label>
               <input 
                 type="text" 
                 className="form-input" 
-                placeholder="Masa konusunu özetleyen bir başlık..." 
+                placeholder={t('lobbyFormTitlePlaceholder', lang)} 
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
                 maxLength={50}
@@ -321,11 +317,11 @@ export default function Lobby({ question, onJoin, participantsCount }) {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Açıklama / Bağlam</label>
+              <label className="form-label">{t('lobbyFormDesc', lang)}</label>
               <input 
                 type="text" 
                 className="form-input" 
-                placeholder="Masa katılımcılarına rehberlik edecek kısa bağlam..." 
+                placeholder={t('lobbyFormDescPlaceholder', lang)} 
                 value={newDesc}
                 onChange={(e) => setNewDesc(e.target.value)}
                 maxLength={100}
@@ -333,10 +329,10 @@ export default function Lobby({ question, onJoin, participantsCount }) {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Müzakere Konusu (Soru)</label>
+              <label className="form-label">{t('lobbyFormQuestion', lang)}</label>
               <textarea 
                 className="form-textarea" 
-                placeholder="Katılımcıların oylayacağı temel müzakere sorusu..." 
+                placeholder={t('lobbyFormQuestionPlaceholder', lang)} 
                 value={newQuestion}
                 onChange={(e) => setNewQuestion(e.target.value)}
                 rows={3}
@@ -346,25 +342,25 @@ export default function Lobby({ question, onJoin, participantsCount }) {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Görünürlük ve Erişim</label>
+              <label className="form-label">{t('lobbyFormVisibility', lang)}</label>
               <select 
                 className="form-input" 
                 value={newVisibility}
                 onChange={(e) => setNewVisibility(e.target.value)}
                 style={{ background: '#110c22', color: '#fff' }}
               >
-                <option value="PUBLIC">Herkese Açık (Şifresiz)</option>
-                <option value="PASSWORD_PROTECTED">Şifre Korumalı</option>
+                <option value="PUBLIC">{t('lobbyVisibilityPublic', lang)}</option>
+                <option value="PASSWORD_PROTECTED">{t('lobbyVisibilityPrivate', lang)}</option>
               </select>
             </div>
 
             {newVisibility === 'PASSWORD_PROTECTED' && (
               <div className="form-group">
-                <label className="form-label">Masa Şifresi</label>
+                <label className="form-label">{t('lobbyFormPass', lang)}</label>
                 <input 
                   type="password" 
                   className="form-input" 
-                  placeholder="Giriş şifresini belirleyin..." 
+                  placeholder={t('lobbyFormPassPlaceholder', lang)} 
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   required
@@ -375,12 +371,12 @@ export default function Lobby({ question, onJoin, participantsCount }) {
             <div className="form-group">
               <label className="form-label">
                 <User size={14} style={{ marginRight: '0.25rem', verticalAlign: 'middle' }} />
-                Moderatör Rumuzunuz
+                {lang === 'tr' ? 'Moderatör Rumuzunuz' : 'Moderator Nickname'}
               </label>
               <input 
                 type="text" 
                 className="form-input" 
-                placeholder="Örn: Moderatör_Ahmet" 
+                placeholder="Örn: Admin_Ahmet" 
                 value={creatorNickname}
                 onChange={(e) => setCreatorNickname(e.target.value)}
                 maxLength={20}
@@ -389,7 +385,7 @@ export default function Lobby({ question, onJoin, participantsCount }) {
             </div>
 
             <button type="submit" className="btn btn-secondary" style={{ width: '100%', marginTop: '1rem', borderColor: 'var(--color-primary)' }}>
-              Masayı Oluştur ve Moderatör Olarak Gir
+              {t('lobbyBtnCreate', lang)}
             </button>
           </form>
         )}

@@ -838,3 +838,71 @@ h1, h2, h3, h4, h5, h6 {
   font-size: 3rem;
   opacity: 0.5;
 }
+
+/* Bağlantı Durum Göstergesi */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  font-weight: 600;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.status-connected {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--color-agree);
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.status-disconnected {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--color-disagree);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+/* Katılımcı Yönetim Listesi */
+.participant-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 250px;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+  margin-top: 0.5rem;
+}
+
+.participant-list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-light);
+  padding: 0.6rem 0.8rem;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+}
+
+.participant-list-item:hover {
+  border-color: var(--border-glow);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.participant-list-name {
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.participant-list-meta {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-style: italic;
+  max-width: 150px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

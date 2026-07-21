@@ -6,6 +6,7 @@ class Database {
     this.prisma = new PrismaClient();
     this.isPrismaActive = false;
     this.sessions = new Map(); // code -> session object
+    this.admins = new Map();   // email -> admin object (In-Memory admin deposu)
     this.nextStatementId = 1;
     this.initialized = this.init();
   }
@@ -19,9 +20,16 @@ class Database {
 
       // Mevcut oturumları yükle
       await this.loadSessionsFromDB();
+
+      // Veritabanından master admin'i kontrol et, yoksa oluştur
+      await this.ensureMasterAdmin();
     } catch (error) {
       this.isPrismaActive = false;
       console.warn('Veritabanı bağlantısı kurulamadı. Çevrimdışı/Bellek-İçi (In-Memory) moda geçiliyor:', error.message);
+
+      // Çevrimdışı modda master admin'i bellek içinde oluştur
+      await this.createMasterAdminInMemory();
+
       // Varsayılan oturumu bellek içinde oluştur
       this.createSessionSync({
         code: 'DEFAULT',
@@ -31,6 +39,145 @@ class Database {
         visibility: 'PUBLIC'
       });
     }
+  }
+
+  // ==================== ADMIN YÖNETİMİ ====================
+
+  /**
+   * Master admin kullanıcısını bellek içinde oluşturur.
+   * Sunucu her başladığında çevrimdışı modda çağrılır.
+   */
+  async createMasterAdminInMemory() {
+    const email = 'admin@muzakere.local';
+    const password = 'admin123';
+    const passwordHash = await bcrypt.hash(password, 12);
+
+    const admin = {
+      id: 'master-admin-001',
+      email,
+      passwordHash,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    this.admins.set(email, admin);
+    console.log(`✅ Master admin oluşturuldu: ${email} (şifre: admin123)`);
+    return admin;
+  }
+
+  /**
+   * Prisma aktifken veritabanında master admin'in varlığını kontrol eder.
+   * Yoksa oluşturur ve bellek içi depoya da ekler.
+   */
+  async ensureMasterAdmin() {
+    const email = 'admin@muzakere.local';
+    const password = 'admin123';
+
+    try {
+      let admin = await this.prisma.admin.findUnique({ where: { email } });
+
+      if (!admin) {
+        const passwordHash = await bcrypt.hash(password, 12);
+        admin = await this.prisma.admin.create({
+          data: { email, passwordHash }
+        });
+        console.log(`✅ Veritabanında master admin oluşturuldu: ${email}`);
+      } else {
+        console.log(`✅ Veritabanında master admin mevcut: ${email}`);
+      }
+
+      // Bellek içi depoya da ekle
+      this.admins.set(admin.email, admin);
+    } catch (err) {
+      console.error('Master admin kontrol/oluşturma hatası:', err.message);
+      // Yedek olarak bellek içinde oluştur
+      await this.createMasterAdminInMemory();
+    }
+  }
+
+  /**
+   * Yeni admin kullanıcısı oluşturur (hem bellek hem veritabanı).
+   */
+  async createAdmin(email, password) {
+    const passwordHash = await bcrypt.hash(password, 12);
+    const id = `admin-${Math.random().toString(36).substring(2, 9)}`;
+
+    const admin = {
+      id,
+      email,
+      passwordHash,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    // Bellek içi depoya ekle
+    this.admins.set(email, admin);
+
+    // Veritabanına da yaz
+    if (this.isPrismaActive) {
+      try {
+        const dbAdmin = await this.prisma.admin.upsert({
+          where: { email },
+          update: { passwordHash },
+          create: { email, passwordHash }
+        });
+        admin.id = dbAdmin.id;
+        this.admins.set(email, admin);
+      } catch (err) {
+        console.error('Admin DB oluşturma hatası:', err.message);
+      }
+    }
+
+    console.log(`✅ Yeni admin oluşturuldu: ${email}`);
+    return admin;
+  }
+
+  /**
+   * E-posta adresine göre admin arar (önce bellek, sonra veritabanı).
+   */
+  async findAdminByEmail(email) {
+    // Önce bellek içi depoya bak
+    if (this.admins.has(email)) {
+      return this.admins.get(email);
+    }
+
+    // Veritabanından ara
+    if (this.isPrismaActive) {
+      try {
+        const admin = await this.prisma.admin.findUnique({ where: { email } });
+        if (admin) {
+          this.admins.set(admin.email, admin);
+          return admin;
+        }
+      } catch (err) {
+        console.error('Admin DB arama hatası:', err.message);
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Tüm admin kullanıcılarını listeler.
+   */
+  async listAdmins() {
+    if (this.isPrismaActive) {
+      try {
+        const dbAdmins = await this.prisma.admin.findMany({
+          select: { id: true, email: true, createdAt: true }
+        });
+        return dbAdmins;
+      } catch (err) {
+        console.error('Admin listeleme hatası:', err.message);
+      }
+    }
+
+    // Bellek içi listeyi döndür
+    return Array.from(this.admins.values()).map(a => ({
+      id: a.id,
+      email: a.email,
+      createdAt: a.createdAt
+    }));
   }
 
   async loadSessionsFromDB() {
@@ -52,7 +199,8 @@ class Database {
           text: o.text,
           author: o.author,
           timestamp: o.timestamp,
-          approved: true
+          approved: true,
+          aiWarning: o.aiWarning
         }));
 
         const moderationQueue = dbSession.opinions.filter(o => o.status === 'PENDING').map(o => ({
@@ -60,7 +208,8 @@ class Database {
           text: o.text,
           author: o.author,
           timestamp: o.timestamp,
-          approved: false
+          approved: false,
+          aiWarning: o.aiWarning
         }));
 
         const participants = dbSession.participants.map(p => {
@@ -73,6 +222,7 @@ class Database {
             nickname: p.nickname,
             justification: p.justification || '',
             isBot: p.isBot,
+            isBanned: p.isBanned || false,
             votes,
             joinedAt: p.joinedAt
           };
@@ -112,6 +262,8 @@ class Database {
 
         this.sessions.set(dbSession.code, session);
       }
+
+      console.log(`📂 Veritabanından yüklenen aktif oturum kodları:`, Array.from(this.sessions.keys()));
 
       // Eğer DB boş ise varsayılan oturumu oluştur
       if (this.sessions.size === 0) {
@@ -173,6 +325,9 @@ class Database {
         bridges: [],
         polarisability: 0
       },
+      targetK: 3,
+      customCampNames: {},
+      polarizationHistory: [],
       creatorId: creatorId,
       createdAt: new Date(),
       updatedAt: new Date()
@@ -238,13 +393,20 @@ class Database {
     const session = this.sessions.get(sessionCode);
     if (!session) throw new Error('Oturum bulunamadı.');
 
+    const normNickname = (nickname || '').trim();
+    const existing = session.participants.find(p => p.nickname.toLowerCase() === normNickname.toLowerCase());
+    if (existing && existing.isBanned) {
+      throw new Error('Bu kullanıcı bu oturumdan engellenmiştir.');
+    }
+
     const id = `p-${Math.random().toString(36).substring(2, 9)}`;
     const participant = {
       id,
-      nickname: nickname || `Katılımcı_${id.substring(2, 6)}`,
+      nickname: normNickname || `Katılımcı_${id.substring(2, 6)}`,
       justification: justification.trim(),
       votes: {}, // { [statementId]: 1 | -1 | 0 }
       isBot: false,
+      isBanned: false,
       joinedAt: new Date()
     };
 
@@ -257,6 +419,7 @@ class Database {
           nickname: participant.nickname,
           justification: participant.justification,
           isBot: participant.isBot,
+          isBanned: participant.isBanned,
           sessionId: session.id
         }
       }).catch(err => {
@@ -272,7 +435,7 @@ class Database {
     if (!session) return false;
 
     const participant = session.participants.find(p => p.id === participantId);
-    if (!participant) return false;
+    if (!participant || participant.isBanned) return false;
 
     if (![1, -1, 0].includes(voteValue)) return false;
 
@@ -300,7 +463,7 @@ class Database {
     return true;
   }
 
-  addStatement(sessionCode, text, author, approved = false, isBot = false) {
+  addStatement(sessionCode, text, author, approved = false, isBot = false, aiWarning = null) {
     const session = this.sessions.get(sessionCode);
     if (!session) throw new Error('Oturum bulunamadı.');
 
@@ -310,7 +473,8 @@ class Database {
       author: author || 'Misafir',
       timestamp: new Date(),
       approved,
-      isBot
+      isBot,
+      aiWarning
     };
 
     if (approved) {
@@ -327,6 +491,7 @@ class Database {
           author: statement.author,
           status: approved ? 'APPROVED' : 'PENDING',
           isBot: statement.isBot,
+          aiWarning: statement.aiWarning,
           sessionId: session.id
         }
       }).catch(err => {
@@ -572,6 +737,207 @@ class Database {
         console.error('Session reset DB hatası:', err.message);
       });
     }
+  }
+
+  /**
+   * Oturum durumunu günceller (active, paused).
+   */
+  updateSessionStatus(sessionCode, status) {
+    const session = this.sessions.get(sessionCode);
+    if (!session) return;
+
+    session.status = status;
+
+    if (this.isPrismaActive) {
+      this.prisma.session.update({
+        where: { code: sessionCode },
+        data: { status }
+      }).catch(err => {
+        console.error('Oturum durumu güncelleme hatası:', err.message);
+      });
+    }
+    console.log(`⚖️ Oturum [${sessionCode}] durumu güncellendi: ${status}`);
+  }
+
+  /**
+   * Oturum oylama matrisini CSV formatında oluşturur.
+   * Format: Katilimci_ID,Rumuz,Gerekce,Tip,Kamp_ID,Harita_X,Harita_Y,Gorus_[S-1],Gorus_[S-2]...
+   */
+  generateCSVExport(sessionCode) {
+    const session = this.sessions.get(sessionCode);
+    if (!session) return '';
+
+    const approvedOpinions = session.statements.filter(o => o.approved !== false);
+    
+    // CSV Başlık Satırı
+    const headers = [
+      'Katilimci_ID',
+      'Rumuz',
+      'Gerekce',
+      'Tip',
+      'Kamp_ID',
+      'Harita_X',
+      'Harita_Y',
+      ...approvedOpinions.map(op => `Gorus_${op.id.replace(/-/g, '_')}("${op.text.replace(/"/g, '""').substring(0, 30)}...")`)
+    ];
+
+    const csvRows = [headers.join(',')];
+
+    // Harita koordinatları ve kamp eşleşmeleri için analizi indeksle
+    const pointsMap = new Map();
+    if (session.analysis && session.analysis.points) {
+      session.analysis.points.forEach(pt => {
+        pointsMap.set(pt.id, pt);
+      });
+    }
+
+    // Katılımcıları satır satır ekle
+    session.participants.forEach(p => {
+      const ptInfo = pointsMap.get(p.id) || { campId: 0, x: 0, y: 0 };
+      
+      const rowData = [
+        p.id,
+        `"${p.nickname.replace(/"/g, '""')}"`,
+        `"${(p.justification || '').replace(/"/g, '""').replace(/\r?\n/g, ' ')}"`,
+        p.isBot ? 'Bot' : 'Gerçek',
+        ptInfo.campId,
+        ptInfo.x,
+        ptInfo.y
+      ];
+
+      // Her bir görüş için oyu ekle
+      approvedOpinions.forEach(op => {
+        const vote = p.votes[op.id];
+        // Oy değeri yoksa 0 (Nötr / Kararsız) yazılır.
+        rowData.push(vote !== undefined ? vote : 0);
+      });
+
+      csvRows.push(rowData.join(','));
+    });
+
+    return csvRows.join('\n');
+  }
+
+  /**
+   * Bir katılımcıyı oturumdan çıkarır (engeller).
+   * Veritabanı ve bellek içi oylarını temizler.
+   */
+  kickParticipant(sessionCode, participantId) {
+    const session = this.sessions.get(sessionCode);
+    if (!session) return false;
+
+    const participant = session.participants.find(p => p.id === participantId);
+    if (!participant || participant.isBanned) return false;
+
+    // 1. Katılımcıyı banlı olarak işaretle (silme)
+    participant.isBanned = true;
+
+    // 2. Katılımcının kendi verdiği oyları RAM'den temizle
+    participant.votes = {};
+
+    // 3. Katılımcının PENDING durumdaki görüşlerini sil
+    session.moderationQueue = session.moderationQueue.filter(o => o.authorId !== participantId);
+
+    // 4. Prisma/PostgreSQL güncellemeleri
+    if (this.isPrismaActive) {
+      // Katılımcıyı güncelle
+      this.prisma.participant.update({
+        where: { id: participantId },
+        data: { isBanned: true }
+      }).catch(err => {
+        console.error('Participant DB ban güncelleme hatası:', err.message);
+      });
+
+      // PENDING görüşleri sil
+      this.prisma.opinion.deleteMany({
+        where: { authorId: participantId, status: 'PENDING' }
+      }).catch(err => {
+        console.error('Pending opinions DB silme hatası:', err.message);
+      });
+
+      // Oyları sil
+      this.prisma.vote.deleteMany({
+        where: { participantId: participantId }
+      }).catch(err => {
+        console.error('Votes DB silme hatası:', err.message);
+      });
+    }
+
+    console.log(`❌ Katılımcı [${participantId}] oturumdan [${sessionCode}] engellendi (Banned).`);
+    return true;
+  }
+
+  /**
+   * Oturum için hedef fikir kampı sayısını (targetK) günceller.
+   */
+  updateSessionCampsCount(sessionCode, k) {
+    const session = this.sessions.get(sessionCode);
+    if (!session) return false;
+    
+    const targetK = parseInt(k, 10);
+    if (isNaN(targetK) || targetK < 2 || targetK > 5) return false;
+
+    session.targetK = targetK;
+
+    if (this.isPrismaActive) {
+      this.prisma.session.update({
+        where: { code: sessionCode },
+        data: { targetK }
+      }).catch(err => console.error('targetK DB güncelleme hatası:', err.message));
+    }
+    return true;
+  }
+
+  /**
+   * Belirli bir kamp ID'si için özel bir isim kaydeder.
+   */
+  renameSessionCamp(sessionCode, campId, newName) {
+    const session = this.sessions.get(sessionCode);
+    if (!session) return false;
+
+    if (!session.customCampNames) {
+      session.customCampNames = {};
+    }
+    session.customCampNames[campId] = newName.trim();
+
+    if (this.isPrismaActive) {
+      this.prisma.session.update({
+        where: { code: sessionCode },
+        data: { customCampNames: session.customCampNames }
+      }).catch(err => console.error('customCampNames DB güncelleme hatası:', err.message));
+    }
+    return true;
+  }
+
+  /**
+   * Oturumun kutuplaşma trend geçmişine yeni bir veri ekler.
+   */
+  addPolarizationHistoryEntry(sessionCode, value) {
+    const session = this.sessions.get(sessionCode);
+    if (!session) return false;
+
+    if (!session.polarizationHistory) {
+      session.polarizationHistory = [];
+    }
+
+    const entry = {
+      t: Date.now(),
+      v: parseFloat(value)
+    };
+
+    // Zaman serisini ekle (maksimum son 50 analiz saklanır)
+    session.polarizationHistory.push(entry);
+    if (session.polarizationHistory.length > 50) {
+      session.polarizationHistory.shift();
+    }
+
+    if (this.isPrismaActive) {
+      this.prisma.session.update({
+        where: { code: sessionCode },
+        data: { polarizationHistory: session.polarizationHistory }
+      }).catch(err => console.error('polarizationHistory DB güncelleme hatası:', err.message));
+    }
+    return true;
   }
 }
 

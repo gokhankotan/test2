@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
-import { Users, Shield, Play, BarChart3, LogIn, Lock, FileJson, Printer } from 'lucide-react';
+import { Users, Shield, Play, BarChart3, Lock, FileJson, Printer, Globe } from 'lucide-react';
 
 import Lobby from './components/Lobby';
 import Participant from './components/Participant';
 import AdminDashboard from './components/AdminDashboard';
 import LiveScreen from './components/LiveScreen';
 import ReportView from './components/ReportView';
+import { t } from './i18n';
 
 export default function App() {
   const [role, setRole] = useState('lobby'); // lobby, participant, admin, livescreen, report
@@ -15,7 +16,8 @@ export default function App() {
     status: 'active',
     statements: [],
     analysis: null,
-    participantsCount: 0
+    participantsCount: 0,
+    targetK: 3
   });
 
   const [participant, setParticipant] = useState(null);
@@ -25,6 +27,11 @@ export default function App() {
   const [adminPassword, setAdminPassword] = useState('');
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [showAdminAuthModal, setShowAdminAuthModal] = useState(false);
+
+  const [isConnected, setIsConnected] = useState(true);
+  const [participants, setParticipants] = useState([]);
+  const offlineVotesQueue = useRef([]);
+  const [lang, setLang] = useState(localStorage.getItem('muzakere_lang') || 'tr');
 
   const socketRef = useRef(null);
 
@@ -62,6 +69,15 @@ export default function App() {
       setSessionState(prev => ({ ...prev, analysis }));
     });
 
+    socket.on('auth-error', (err) => {
+      alert(err.message || 'Oturum yetkiniz sona erdi. Lütfen tekrar giriş yapın.');
+      localStorage.removeItem('muzakere_participant');
+      setParticipant(null);
+      setIsModerator(false);
+      setActiveSessionCode('DEFAULT');
+      setRole('lobby');
+    });
+
     socket.on('moderation-queue', (queue) => {
       setModerationQueue(queue);
     });
@@ -94,6 +110,59 @@ export default function App() {
       console.log('Masa erişim ayarları güncellendi:', visibility);
     });
 
+    socket.on('session-status-updated', ({ status }) => {
+      setSessionState(prev => ({ ...prev, status }));
+    });
+
+    socket.on('connect', () => {
+      setIsConnected(true);
+      
+      const savedPartStr = localStorage.getItem('muzakere_participant');
+      if (savedPartStr && offlineVotesQueue.current.length > 0) {
+        try {
+          const savedPart = JSON.parse(savedPartStr);
+          console.log(`🔌 Bağlantı kuruldu, ${offlineVotesQueue.current.length} adet bekleyen oy eşitleniyor...`);
+          offlineVotesQueue.current.forEach(({ statementId, voteValue }) => {
+            socket.emit('submit-vote', {
+              sessionCode: savedPart.sessionCode || 'DEFAULT',
+              participantId: savedPart.id,
+              statementId,
+              voteValue
+            });
+          });
+          offlineVotesQueue.current = [];
+        } catch (e) {
+          console.error('Offline oylar eşitlenirken hata:', e);
+        }
+      }
+    });
+
+    socket.on('disconnect', () => {
+      setIsConnected(false);
+    });
+
+    socket.on('participants-list', (list) => {
+      setParticipants(list);
+    });
+
+    socket.on('participant-kicked', ({ participantId }) => {
+      const savedPartStr = localStorage.getItem('muzakere_participant');
+      if (savedPartStr) {
+        try {
+          const savedPart = JSON.parse(savedPartStr);
+          if (savedPart.id === participantId) {
+            localStorage.removeItem('muzakere_participant');
+            setParticipant(null);
+            setIsModerator(false);
+            setRole('lobby');
+            alert('⚖️ Müzakere Masası: Moderatör tarafından masadan çıkarıldınız.');
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+    });
+
     // LocalStorage: Daha önceden oturum açılmış mı?
     const savedParticipant = localStorage.getItem('muzakere_participant');
     if (savedParticipant) {
@@ -106,7 +175,10 @@ export default function App() {
         const modToken = localStorage.getItem(`moderator_token_${parsed.sessionCode || 'DEFAULT'}`);
         if (modToken) {
           setIsModerator(true);
-          socket.emit('admin-join', { sessionCode: parsed.sessionCode || 'DEFAULT' });
+          socket.emit('admin-join', { 
+            sessionCode: parsed.sessionCode || 'DEFAULT', 
+            token: localStorage.getItem('admin_token') || modToken 
+          });
         }
 
         socket.emit('join-session', { sessionCode: parsed.sessionCode || 'DEFAULT' });
@@ -140,7 +212,10 @@ export default function App() {
 
         if (isModFlag) {
           setIsModerator(true);
-          socketRef.current.emit('admin-join', { sessionCode: code });
+          socketRef.current.emit('admin-join', { 
+            sessionCode: code, 
+            token: localStorage.getItem('admin_token') || localStorage.getItem('moderator_token_' + code) 
+          });
         }
 
         setRole('participant');
@@ -166,6 +241,13 @@ export default function App() {
     const updatedPart = { ...participant, votes: updatedVotes };
     setParticipant(updatedPart);
     localStorage.setItem('muzakere_participant', JSON.stringify(updatedPart));
+
+    // Çevrimdışı isek oyu kuyruğa ekle
+    if (!isConnected) {
+      console.log(`🔌 Çevrimdışı oy algılandı. Görüş [${statementId}] oyu kuyruğa alındı.`);
+      offlineVotesQueue.current.push({ statementId, voteValue });
+      return;
+    }
 
     socketRef.current.emit('submit-vote', {
       sessionCode: activeSessionCode,
@@ -213,7 +295,10 @@ export default function App() {
         setIsAdminAuthenticated(true);
         setShowAdminAuthModal(false);
         setRole('admin');
-        socketRef.current.emit('admin-join', { sessionCode: activeSessionCode });
+        socketRef.current.emit('admin-join', { 
+          sessionCode: activeSessionCode, 
+          token: data.token || localStorage.getItem('admin_token') || localStorage.getItem('moderator_token_' + activeSessionCode) 
+        });
       } else {
         alert('Hatalı Şifre!');
       }
@@ -223,6 +308,10 @@ export default function App() {
 
   const handleUpdateQuestion = (newQuestion) => {
     socketRef.current.emit('admin-update-question', { sessionCode: activeSessionCode, newQuestion });
+  };
+
+  const handleUpdateSessionStatus = (status) => {
+    socketRef.current.emit('admin-update-session-status', { sessionCode: activeSessionCode, status });
   };
 
   const handleAdminApproveStatement = (statementId) => {
@@ -241,10 +330,30 @@ export default function App() {
     socketRef.current.emit('admin-reset-session', { sessionCode: activeSessionCode }, callback);
   };
 
+  const handleKickParticipant = (participantId) => {
+    socketRef.current.emit('admin-kick-participant', { sessionCode: activeSessionCode, participantId });
+  };
+
+  const handleUpdateCampsCount = (targetK) => {
+    socketRef.current.emit('admin-update-camps-count', { sessionCode: activeSessionCode, targetK });
+  };
+
+  const handleRenameCamp = (campId, newName) => {
+    socketRef.current.emit('admin-rename-camp', { sessionCode: activeSessionCode, campId, newName });
+  };
+
+  const handleToggleLang = (selectedLang) => {
+    localStorage.setItem('muzakere_lang', selectedLang);
+    setLang(selectedLang);
+  };
+
   const handleOpenAdminPanel = () => {
     if (isAdminAuthenticated) {
       setRole('admin');
-      socketRef.current.emit('admin-join', { sessionCode: activeSessionCode });
+      socketRef.current.emit('admin-join', { 
+        sessionCode: activeSessionCode, 
+        token: localStorage.getItem('admin_token') || localStorage.getItem('moderator_token_' + activeSessionCode) 
+      });
     } else {
       setShowAdminAuthModal(true);
     }
@@ -271,29 +380,32 @@ export default function App() {
     <div className="app-container">
       {/* Üst Menü / Navbar */}
       <header className="app-header no-print">
-        <div className="brand" onClick={() => setRole(participant ? 'participant' : 'lobby')} style={{ cursor: 'pointer' }}>
+        <div className="brand" onClick={() => setRole(participant ? 'participant' : 'lobby')} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <span className="brand-icon">⚖️</span>
           <div>
-            <div className="brand-title">Müzakere Masası</div>
+            <div className="brand-title">{t('brandTitle', lang)}</div>
             <div className="brand-subtitle">
-              {activeSessionCode !== 'DEFAULT' ? `Kod: ${activeSessionCode}` : 'Habermas Kamu Alanı'}
+              {activeSessionCode !== 'DEFAULT' ? `CODE: ${activeSessionCode}` : t('brandSubtitle', lang)}
             </div>
           </div>
+          <span className={`status-badge ${isConnected ? 'status-connected' : 'status-disconnected'}`} style={{ marginLeft: '1rem' }}>
+            {isConnected ? t('connConnected', lang) : t('connDisconnected', lang)}
+          </span>
         </div>
 
-        <nav className="nav-links">
+        <nav className="nav-links" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <button 
             onClick={() => setRole(participant ? 'participant' : 'lobby')} 
             className={`nav-btn ${['lobby', 'participant'].includes(role) ? 'active' : ''}`}
           >
-            <Users size={16} /> Müzakere Masası
+            <Users size={16} /> {t('navTable', lang)}
           </button>
           
           <button 
             onClick={() => setRole('livescreen')} 
             className={`nav-btn ${role === 'livescreen' ? 'active' : ''}`}
           >
-            <Play size={16} /> Canlı Ekran
+            <Play size={16} /> {t('navLive', lang)}
           </button>
 
           {/* Rapor Butonları (Admin veya Moderatör için) */}
@@ -303,21 +415,21 @@ export default function App() {
                 onClick={() => setRole('report')} 
                 className={`nav-btn ${role === 'report' ? 'active' : ''}`}
               >
-                <BarChart3 size={16} /> Bulgular & Rapor
+                <BarChart3 size={16} /> {t('navReport', lang)}
               </button>
               <button 
                 onClick={handleDownloadReport}
                 className="nav-btn"
-                title="JSON Raporu İndir"
+                title={t('navJsonReport', lang)}
               >
-                <FileJson size={16} /> JSON Rapor
+                <FileJson size={16} /> {t('navJsonReport', lang)}
               </button>
               <button 
                 onClick={() => window.print()}
                 className="nav-btn"
-                title="Yazdır"
+                title={t('navPrint', lang)}
               >
-                <Printer size={16} /> Yazdır
+                <Printer size={16} /> {t('navPrint', lang)}
               </button>
             </>
           )}
@@ -327,8 +439,26 @@ export default function App() {
             className={`nav-btn ${role === 'admin' ? 'active' : ''}`}
             style={{ borderColor: 'var(--color-primary)', color: 'var(--color-primary)' }}
           >
-            <Shield size={16} /> Yönetici Paneli
+            <Shield size={16} /> {t('navAdminPanel', lang)}
           </button>
+
+          {/* Dil Değiştirici Butonları */}
+          <div style={{ display: 'flex', gap: '0.25rem', borderLeft: '1px solid var(--border-light)', paddingLeft: '1rem', marginLeft: '0.5rem' }}>
+            <button 
+              onClick={() => handleToggleLang('tr')} 
+              className={`nav-btn`} 
+              style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', background: lang === 'tr' ? 'var(--color-primary)' : 'transparent', borderColor: lang === 'tr' ? 'var(--color-primary)' : 'var(--border-light)', minWidth: 'auto' }}
+            >
+              TR
+            </button>
+            <button 
+              onClick={() => handleToggleLang('en')} 
+              className={`nav-btn`} 
+              style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', background: lang === 'en' ? 'var(--color-primary)' : 'transparent', borderColor: lang === 'en' ? 'var(--color-primary)' : 'var(--border-light)', minWidth: 'auto' }}
+            >
+              EN
+            </button>
+          </div>
         </nav>
       </header>
 
@@ -339,6 +469,7 @@ export default function App() {
             question={sessionState.question} 
             participantsCount={sessionState.participantsCount}
             onJoin={handleJoinSession} 
+            lang={lang}
           />
         )}
 
@@ -355,6 +486,11 @@ export default function App() {
             moderationQueue={moderationQueue}
             onApproveStatement={handleApproveStatement}
             onRejectStatement={handleRejectStatement}
+            status={sessionState.status}
+            onUpdateSessionStatus={handleUpdateSessionStatus}
+            participants={participants}
+            onKickParticipant={handleKickParticipant}
+            lang={lang}
           />
         )}
 
@@ -366,6 +502,8 @@ export default function App() {
               participantsCount: sessionState.participantsCount,
               statementsCount: sessionState.statements.length
             }}
+            status={sessionState.status}
+            onUpdateSessionStatus={handleUpdateSessionStatus}
             onUpdateQuestion={handleUpdateQuestion}
             onApproveStatement={handleAdminApproveStatement}
             onRejectStatement={handleAdminRejectStatement}
@@ -373,6 +511,13 @@ export default function App() {
             onResetSession={handleResetSession}
             onOpenLiveScreen={() => setRole('livescreen')}
             onOpenReport={() => setRole('report')}
+            participants={participants}
+            onKickParticipant={handleKickParticipant}
+            targetK={sessionState.analysis?.targetK || 3}
+            camps={sessionState.analysis?.camps || []}
+            onUpdateCampsCount={handleUpdateCampsCount}
+            onRenameCamp={handleRenameCamp}
+            lang={lang}
           />
         )}
 
@@ -384,6 +529,8 @@ export default function App() {
               participantsCount: sessionState.participantsCount,
               statementsCount: sessionState.statements.length
             }}
+            status={sessionState.status}
+            lang={lang}
           />
         )}
 
@@ -391,6 +538,7 @@ export default function App() {
           <ReportView 
             sessionCode={activeSessionCode}
             onBack={() => setRole(isAdminAuthenticated ? 'admin' : 'participant')}
+            lang={lang}
           />
         )}
       </main>
@@ -413,19 +561,19 @@ export default function App() {
           <div className="glass-panel" style={{ width: '100%', maxWidth: '400px', padding: '2.5rem' }}>
             <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
               <Lock size={36} style={{ color: 'var(--color-primary)', marginBottom: '0.75rem' }} />
-              <h2>Yönetici Kimlik Doğrulama</h2>
+              <h2>{t('adminModalTitle', lang)}</h2>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
-                Yönetici paneline erişmek için şifrenizi girin.
+                {t('adminModalDesc', lang)}
               </p>
             </div>
 
             <form onSubmit={handleAdminLoginSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div className="form-group">
-                <label className="form-label">Yönetici Şifresi</label>
+                <label className="form-label">{t('adminModalPassLabel', lang)}</label>
                 <input 
                   type="password" 
                   className="form-input" 
-                  placeholder="Şifreyi giriniz..." 
+                  placeholder={t('adminModalPassPlaceholder', lang)} 
                   value={adminPassword}
                   onChange={(e) => setAdminPassword(e.target.value)}
                   autoFocus
@@ -440,10 +588,14 @@ export default function App() {
                   className="btn btn-secondary"
                   style={{ flex: 1 }}
                 >
-                  İptal
+                  {t('adminModalCancel', lang)}
                 </button>
-                <button type="submit" className="btn" style={{ flex: 1 }}>
-                  Giriş Yap
+                <button 
+                  type="submit" 
+                  className="btn"
+                  style={{ flex: 1 }}
+                >
+                  {t('adminModalSubmit', lang)}
                 </button>
               </div>
             </form>

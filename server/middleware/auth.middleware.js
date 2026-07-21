@@ -4,6 +4,54 @@ import { db } from '../database.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'kamusal_alan_gizli_anahtar';
 
+/**
+ * Ortak JWT Token doğrulama fonksiyonu (REST ve Socket.io tarafından ortak kullanılır)
+ */
+export function verifySessionToken(token, sessionCode) {
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    
+    // Admin tipi token global yetkiye sahiptir
+    if (decoded.type === 'admin') {
+      return { isValid: true, type: 'admin', decoded };
+    }
+
+    if (!sessionCode) {
+      return { isValid: false, message: 'Oturum kodu belirtilmedi.' };
+    }
+
+    const code = sessionCode.toUpperCase();
+
+    // Moderatör tokenı kontrolü
+    if (decoded.type === 'moderator') {
+      if (decoded.sessionCode.toUpperCase() !== code) {
+        return { isValid: false, message: 'Yetkisiz işlem: Geçersiz oturum moderatörü.' };
+      }
+      return { isValid: true, type: 'moderator', decoded };
+    }
+
+    // Katılımcı erişim tokenı kontrolü
+    if (decoded.type === 'participant_access') {
+      if (decoded.sessionCode.toUpperCase() !== code) {
+        return { isValid: false, message: 'Yetkisiz işlem: Geçersiz oturum kodu.' };
+      }
+
+      const session = db.getSessionSync(code);
+      if (session && session.passwordUpdatedAt) {
+        const passwordUpdatedTime = Math.floor(new Date(session.passwordUpdatedAt).getTime() / 1000);
+        if (decoded.iat < passwordUpdatedTime) {
+          return { isValid: false, reason: 'PASSWORD_CHANGED', message: 'Oturum şifresi değiştirildi. Lütfen yeni şifreyi girin.' };
+        }
+      }
+      return { isValid: true, type: 'participant_access', decoded };
+    }
+
+    return { isValid: false, message: 'Geçersiz token tipi.' };
+  } catch (err) {
+    return { isValid: false, message: 'Geçersiz veya süresi dolmuş token.' };
+  }
+}
+
 // 1. Admin yetkilendirme middleware'i
 export function authenticateAdmin(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -12,20 +60,15 @@ export function authenticateAdmin(req, res, next) {
   }
 
   const token = authHeader.split(' ')[1];
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    if (decoded.type !== 'admin') {
-      return res.status(403).json({ success: false, message: 'Erişim reddedildi: Admin yetkisi gerekiyor.' });
-    }
-    req.admin = decoded;
-    next();
-  } catch (err) {
-    return res.status(401).json({ success: false, message: 'Geçersiz veya süresi dolmuş token.' });
+  const authResult = verifySessionToken(token, null);
+  if (!authResult.isValid || authResult.type !== 'admin') {
+    return res.status(403).json({ success: false, message: authResult.message || 'Erişim reddedildi: Admin yetkisi gerekiyor.' });
   }
+  req.admin = authResult.decoded;
+  next();
 }
 
 // 2. Şifreli oturum giriş denemeleri için hız sınırlayıcı (Rate Limiter)
-// IP başına 5 başarısız denemede 15 dakika kilit
 export const passwordRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 dakika
   max: 5,
@@ -35,9 +78,7 @@ export const passwordRateLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  // Sadece başarısız giriş denemelerini saymak için, 200 OK dışındaki durumları limitleyebiliriz veya basitçe tüm istekleri limitleyebiliriz.
-  // Giriş endpoint'inde rate limiter'ı doğrudan kullanacağımız için, oraya yapılan istek sayısını sınırlamak en garantisidir.
-  skipSuccessfulRequests: true // Başarılı girişler limiti etkilemesin
+  skipSuccessfulRequests: true
 });
 
 // 3. Katılımcı oturum erişim kontrolü (Public / Şifreli)
@@ -57,43 +98,32 @@ export async function checkParticipantAccess(req, res, next) {
     return next();
   }
 
-  // Oturum PASSWORD_PROTECTED ise token'ları kontrol et
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ success: false, message: 'Bu masaya erişmek için şifre veya oturum yetkisi gerekiyor.', passwordRequired: true });
   }
 
   const token = authHeader.split(' ')[1];
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-
-    // Senaryo A: Moderatör token'ı (Şifreyi bypass eder)
-    if (decoded.type === 'moderator' && decoded.sessionCode === code) {
-      req.moderator = decoded;
-      return next();
+  const authResult = verifySessionToken(token, code);
+  
+  if (!authResult.isValid) {
+    if (authResult.reason === 'PASSWORD_CHANGED') {
+      return res.status(403).json({ 
+        success: false, 
+        message: authResult.message, 
+        passwordRequired: true 
+      });
     }
-
-    // Senaryo B: Katılımcı erişim token'ı
-    if (decoded.type === 'participant_access' && decoded.sessionCode === code) {
-      // Şifre güncellenmişse eski token'ları iptal et
-      if (session.passwordUpdatedAt) {
-        const passwordUpdatedTime = Math.floor(new Date(session.passwordUpdatedAt).getTime() / 1000);
-        if (decoded.iat < passwordUpdatedTime) {
-          return res.status(403).json({ 
-            success: false, 
-            message: 'Oturum şifresi değiştirildi. Lütfen yeni şifreyi girin.', 
-            passwordRequired: true 
-          });
-        }
-      }
-      req.participantAccess = decoded;
-      return next();
-    }
-
-    return res.status(403).json({ success: false, message: 'Geçersiz oturum token türü.', passwordRequired: true });
-  } catch (err) {
-    return res.status(401).json({ success: false, message: 'Oturum süresi doldu veya geçersiz token.', passwordRequired: true });
+    return res.status(401).json({ success: false, message: authResult.message, passwordRequired: true });
   }
+
+  if (authResult.type === 'moderator') {
+    req.moderator = authResult.decoded;
+  } else if (authResult.type === 'participant_access') {
+    req.participantAccess = authResult.decoded;
+  }
+
+  next();
 }
 
 // 4. Moderatör yetki kontrolü
@@ -109,14 +139,10 @@ export async function checkModerator(req, res, next) {
   }
 
   const token = authHeader.split(' ')[1];
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    if (decoded.type !== 'moderator' || decoded.sessionCode !== code) {
-      return res.status(403).json({ success: false, message: 'Yetkisiz işlem: Sadece bu masanın moderatörü işlem yapabilir.' });
-    }
-    req.moderator = decoded;
-    next();
-  } catch (err) {
-    return res.status(401).json({ success: false, message: 'Geçersiz veya süresi dolmuş moderatör token.' });
+  const authResult = verifySessionToken(token, code);
+  if (!authResult.isValid || authResult.type !== 'moderator') {
+    return res.status(403).json({ success: false, message: authResult.message || 'Yetkisiz işlem: Sadece bu masanın moderatörü işlem yapabilir.' });
   }
+  req.moderator = authResult.decoded;
+  next();
 }

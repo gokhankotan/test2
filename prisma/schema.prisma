@@ -38,6 +38,9 @@ model Session {
   passwordHash      String?
   passwordUpdatedAt DateTime?
   analysis          Json?         // PCA, kümeleme ve köprü cümle çıktılarının JSON olarak saklanacağı alan
+  targetK           Int           @default(3)
+  customCampNames   Json?
+  polarizationHistory Json?
   creatorId         String?
   creator           Admin?        @relation(fields: [creatorId], references: [id], onDelete: SetNull)
   participants      Participant[]
@@ -51,6 +54,7 @@ model Participant {
   nickname      String
   justification String?
   isBot         Boolean   @default(false)
+  isBanned      Boolean   @default(false)
   sessionId     String
   session       Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   votes         Vote[]
@@ -63,6 +67,7 @@ model Opinion {
   author    String
   status    OpinionStatus @default(PENDING)
   isBot     Boolean       @default(false)
+  aiWarning String?
   sessionId String
   session   Session       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   votes     Vote[]

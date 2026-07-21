@@ -13,9 +13,9 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 
 import { db } from './database.js';
-import { calculatePCA, calculateKMeans, analyzeCampsAndBridges } from './algorithms.js';
-import { authenticateAdmin, passwordRateLimiter, checkParticipantAccess, checkModerator } from './middleware/auth.middleware.js';
-import { generateClusterSummary } from './services/llm.service.js';
+import { calculatePCA, runKMeansWithStability, analyzeCampsAndBridges, alignCentroids } from './algorithms.js';
+import { authenticateAdmin, passwordRateLimiter, checkParticipantAccess, checkModerator, verifySessionToken } from './middleware/auth.middleware.js';
+import { generateClusterSummary, evaluateOpinionContent } from './services/llm.service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,14 +42,9 @@ app.post('/api/admin/login', async (req, res) => {
   const adminEmail = email || 'admin@muzakere.local';
 
   try {
-    let admin = null;
-    if (db.isPrismaActive) {
-      admin = await db.prisma.admin.findUnique({ where: { email: adminEmail } });
-    } else if (adminEmail === 'admin@muzakere.local') {
-      // Çevrimdışı modda fallback
-      const hash = await bcrypt.hash('admin123', 12);
-      admin = { email: 'admin@muzakere.local', passwordHash: hash };
-    }
+    await db.initialized; // Veritabanı/admin başlatılmasının tamamlanmasını bekle
+
+    const admin = await db.findAdminByEmail(adminEmail);
 
     if (!admin) {
       return res.status(401).json({ success: false, message: 'Geçersiz e-posta veya şifre.' });
@@ -241,8 +236,29 @@ app.post('/api/sessions/:code/opinion', checkParticipantAccess, async (req, res)
   }
 
   try {
-    const statement = db.addStatement(upperCode, text, author, false, !!isBot);
     const session = db.getSessionSync(upperCode);
+    if (!session) {
+      return res.status(404).json({ success: false, message: 'Oturum bulunamadı.' });
+    }
+
+    // Kullanıcı banlıysa görüş eklemeyi engelle
+    const participant = session.participants.find(p => p.nickname.toLowerCase() === (author || '').trim().toLowerCase());
+    if (participant && participant.isBanned) {
+      return res.status(403).json({ success: false, message: 'Bu kullanıcı bu oturumdan engellenmiştir.' });
+    }
+
+    // Oturum duraklatılmışsa görüş eklemeyi engelle
+    if (session.status === 'paused') {
+      return res.status(400).json({ success: false, message: 'Bu masada görüş alımı moderatör tarafından duraklatılmıştır.' });
+    }
+
+    // Yapay zeka veya kural motoruyla görüş içeriğini denetle
+    const aiResult = await evaluateOpinionContent(text, session.question);
+    
+    // AI uyarı bayrağı gerekçesi (varsa)
+    const aiWarning = aiResult.flagged ? aiResult.reason : null;
+
+    const statement = db.addStatement(upperCode, text, author, false, !!isBot, aiWarning);
     
     // Moderatör odasına kuyruk güncellemesi gönder
     io.to(`moderator-${upperCode}`).emit('moderation-queue', session.moderationQueue);
@@ -330,6 +346,30 @@ app.get('/api/sessions/:code/report', async (req, res) => {
   }
 });
 
+// 8.1. CSV İhracatı (Oylama Matrisi)
+app.get('/api/sessions/:code/export/csv', async (req, res) => {
+  const { code } = req.params;
+  const upperCode = code.toUpperCase();
+
+  try {
+    const session = await db.getSessionByCode(upperCode);
+    if (!session) {
+      return res.status(404).json({ success: false, message: 'Oturum bulunamadı.' });
+    }
+
+    const csvContent = db.generateCSVExport(upperCode);
+    
+    // Tarayıcıya dosya indirme başlıklarını set et
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename=muzakere_oylama_matrisi_${upperCode}.csv`);
+    
+    // UTF-8 BOM ekleyerek Türkçe karakterlerin Excel'de doğru açılmasını sağlayalım
+    res.send('\uFEFF' + csvContent);
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // Geriye dönük uyumluluk için eski rapor endpoint'i
 app.get('/api/session/report', (req, res) => {
   res.redirect('/api/sessions/DEFAULT/report');
@@ -389,37 +429,41 @@ async function performAnalysis(sessionCode) {
   const session = db.getSessionSync(sessionCode);
   if (!session) return;
 
-  const participants = session.participants;
+  const activeParticipants = session.participants.filter(p => !p.isBanned);
   const statements = session.statements;
   
-  const n = participants.length;
+  const n = activeParticipants.length;
   const m = statements.length;
 
   const state = activeDebouncers.get(sessionCode);
   if (state) state.lastRun = Date.now();
 
-  // Yeterli veri yoksa boş sonuç gönder
-  if (n < 3 || m < 2) {
-    const emptyAnalysis = {
-      points: participants.map(p => ({ id: p.id, nickname: p.nickname, x: 0, y: 0, campId: 0, isBot: !!p.isBot })),
-      camps: [
-        { id: 0, name: "Ortak Alan", size: n, x: 0, y: 0, topStatements: [], summary: "Yeterli katılım sağlandığında fikir grupları burada analiz edilecektir." }
-      ],
-      bridges: [],
-      polarisability: 0
+  // Minimum örneklem eşiği (PROJECT_CONSTRAINTS.md madde 11)
+  const MIN_PARTICIPANTS = 10;
+  const MIN_OPINIONS = 5;
+
+  if (n < MIN_PARTICIPANTS || m < MIN_OPINIONS) {
+    const insufficientPayload = {
+      insufficientData: true,
+      participantsNeeded: Math.max(0, MIN_PARTICIPANTS - n),
+      opinionsNeeded: Math.max(0, MIN_OPINIONS - m),
+      currentParticipants: n,
+      currentOpinions: m
     };
-    db.updateAnalysis(sessionCode, emptyAnalysis);
-    io.to(`session-${sessionCode}`).emit('analysis-update', emptyAnalysis);
+    db.updateAnalysis(sessionCode, insufficientPayload);
+    io.to(`session-${sessionCode}`).emit('analysis-update', insufficientPayload);
     return;
   }
 
   // 1. Oy matrisini oluştur
-  const X = participants.map(p => {
-    return statements.map(st => p.votes[st.id] !== undefined ? p.votes[st.id] : 0);
+  // Katılımcının oy vermediği görüşler null olarak işaretlenir (0 ile karıştırılmaz).
+  // 0 = bilinçli "Geç" oyu, null = "bu görüşü hiç oylamamış" — fark kritiktir (PROJECT_CONSTRAINTS.md madde 11).
+  const X = activeParticipants.map(p => {
+    return statements.map(st => p.votes[st.id] !== undefined ? p.votes[st.id] : null);
   });
 
-  // 2. PCA Koordinatlarını hesapla
-  const { scores } = calculatePCA(X, 2);
+  // 2. PCA Koordinatlarını hesapla (null-aware NIPALS, pairwise deletion)
+  const { scores, varianceExplained } = calculatePCA(X, 2);
 
   // Koordinatları görselleştirme için normalize et (-80 ile 80 arasına çek)
   let minX = Infinity, maxX = -Infinity;
@@ -435,7 +479,7 @@ async function performAnalysis(sessionCode) {
   const rangeX = maxX - minX;
   const rangeY = maxY - minY;
 
-  const points = participants.map((p, i) => {
+  const points = activeParticipants.map((p, i) => {
     let xCoord = 0;
     let yCoord = 0;
     
@@ -445,6 +489,7 @@ async function performAnalysis(sessionCode) {
     return {
       id: p.id,
       nickname: p.nickname,
+      justification: p.justification || '',
       x: parseFloat(xCoord.toFixed(2)),
       y: parseFloat(yCoord.toFixed(2)),
       campId: 0, // K-Means ile doldurulacak
@@ -452,32 +497,47 @@ async function performAnalysis(sessionCode) {
     };
   });
 
-  // 3. K-Means ile 3 Gruba Kümele
+  // 3. K-Means ile Gruba Kümele (5 çalıştırma, en iyi WCSS seçilir, clusterStability hesaplanır)
   const coordinates2D = points.map(pt => [pt.x, pt.y]);
-  const k = Math.min(3, n);
-  const { assignments, centroids } = calculateKMeans(coordinates2D, k);
+  const k = Math.min(session.targetK || 3, n);
+  const { assignments, centroids, clusterStability } = runKMeansWithStability(coordinates2D, k, 5);
+
+  // Eski centroid'leri oku (varsa)
+  let previousCentroids = [];
+  if (session.analysis && session.analysis.camps) {
+    previousCentroids = session.analysis.camps.map(c => [c.x, c.y]);
+  }
+
+  // Yeni centroid'leri ve etiket atamalarını eski centroid'ler ile eşleştir
+  const aligned = alignCentroids(centroids, assignments, previousCentroids);
+  const alignedAssignments = aligned.assignments;
+  const alignedCentroids = aligned.centroids;
 
   points.forEach((pt, idx) => {
-    pt.campId = assignments[idx];
+    pt.campId = alignedAssignments[idx];
   });
 
   // 4. Köprü Cümleleri ve Kamp Ayırt Edici Özellikleri Analizi
-  const { bridges, campCharacteristics } = analyzeCampsAndBridges(statements, participants, assignments, k);
+  const { bridges, campCharacteristics } = analyzeCampsAndBridges(statements, activeParticipants, alignedAssignments, k);
 
   // 5. Kampları Detaylandır (LLM Entegrasyonu ile)
   const camps = await Promise.all(Array(k).fill(0).map(async (_, cIdx) => {
     const size = points.filter(pt => pt.campId === cIdx).length;
-    const centroid = centroids[cIdx] || [0, 0];
+    const centroid = alignedCentroids[cIdx] || [0, 0];
     
     let name = `Grup ${String.fromCharCode(65 + cIdx)}`;
-    const characteristics = campCharacteristics[cIdx] || [];
-    if (characteristics.length > 0) {
-      const bestText = characteristics[0].statement.text;
-      const cleanWordList = bestText.split(" ").slice(0, 3).join(" ");
-      name = `"${cleanWordList}..." Taraftarları`;
+    if (session.customCampNames && session.customCampNames[cIdx] !== undefined) {
+      name = session.customCampNames[cIdx];
+    } else {
+      const characteristics = campCharacteristics[cIdx] || [];
+      if (characteristics.length > 0) {
+        const bestText = characteristics[0].statement.text;
+        const cleanWordList = bestText.split(" ").slice(0, 3).join(" ");
+        name = `"${cleanWordList}..." Taraftarları`;
+      }
     }
 
-    const topStatements = characteristics.map(c => ({
+    const topStatements = (campCharacteristics[cIdx] || []).map(c => ({
       text: c.statement.text,
       approvalRate: Math.round(c.approvalRate * 100),
       contrastScore: parseFloat(c.contrastScore.toFixed(2))
@@ -522,16 +582,36 @@ async function performAnalysis(sessionCode) {
       overallRate: Math.round(b.overallRate * 100),
       campApprovalRates: b.campApprovalRates.map(r => Math.round(r * 100))
     })),
-    polarisability
+    polarisability,
+    targetK: session.targetK || 3,
+    polarizationHistory: session.polarizationHistory || [],
+    varianceExplained,
+    clusterStability
   };
 
   db.updateAnalysis(sessionCode, analysis);
+  db.addPolarizationHistoryEntry(sessionCode, polarisability);
+  
+  // Güncel geçmişi analize tekrar yerleştir
+  analysis.polarizationHistory = session.polarizationHistory || [];
+  
   io.to(`session-${sessionCode}`).emit('analysis-update', analysis);
 }
 
 // Socket.io Bağlantı Kontrolleri
 io.on('connection', (socket) => {
   console.log(`Yeni bağlantı: ${socket.id}`);
+
+  // Soket yetki kontrolü yardımcı fonksiyonu
+  const checkSocketAuth = (sessionCode) => {
+    const code = sessionCode ? sessionCode.toUpperCase() : 'DEFAULT';
+    const authResult = verifySessionToken(socket.adminToken, code);
+    if (!authResult.isValid || (authResult.type !== 'admin' && authResult.type !== 'moderator')) {
+      socket.emit('auth-error', { message: authResult.message || 'Yetkisiz işlem.' });
+      return false;
+    }
+    return true;
+  };
 
   // Geriye dönük uyumluluk için varsayılan session durumunu gönder
   const defaultSession = db.session;
@@ -565,13 +645,24 @@ io.on('connection', (socket) => {
   });
 
   // Admin Odasına Katılma
-  socket.on('admin-join', ({ sessionCode } = {}) => {
+  socket.on('admin-join', ({ sessionCode, token } = {}) => {
     const code = sessionCode ? sessionCode.toUpperCase() : 'DEFAULT';
+    
+    // admin-join anında token'ı doğrula
+    const authResult = verifySessionToken(token, code);
+    if (!authResult.isValid || (authResult.type !== 'admin' && authResult.type !== 'moderator')) {
+      socket.emit('auth-error', { message: authResult.message || 'Yetkisiz giriş.' });
+      return;
+    }
+
+    socket.adminToken = token;
+    socket.adminSessionCode = code;
     socket.join(`moderator-${code}`);
     
     const session = db.getSessionSync(code);
     if (session) {
       socket.emit('moderation-queue', session.moderationQueue);
+      socket.emit('participants-list', session.participants.map(p => ({ id: p.id, nickname: p.nickname, justification: p.justification, isBot: p.isBot })));
     }
   });
 
@@ -582,14 +673,16 @@ io.on('connection', (socket) => {
       const participant = db.addParticipant(code, nickname, justification);
       callback({ success: true, participantId: participant.id, nickname: participant.nickname });
       
+      const session = db.getSessionSync(code);
+      
       // Moderatörlere bildir
       io.to(`moderator-${code}`).emit('participant-joined', {
         id: participant.id,
         nickname: participant.nickname,
         justification: participant.justification
       });
+      io.to(`moderator-${code}`).emit('participants-list', session.participants.map(p => ({ id: p.id, nickname: p.nickname, justification: p.justification, isBot: p.isBot })));
 
-      const session = db.getSessionSync(code);
       io.to(`session-${code}`).emit('stats-update', { participantsCount: session.participants.length });
 
       runAndBroadcastAnalysis(code);
@@ -599,34 +692,57 @@ io.on('connection', (socket) => {
   });
 
   // Görüş Ekleme (Socket fallback - HTTP API tercih edilir)
-  socket.on('submit-statement', ({ sessionCode, participantId, text }, callback) => {
+  socket.on('submit-statement', async ({ sessionCode, participantId, text }, callback) => {
     const code = sessionCode ? sessionCode.toUpperCase() : 'DEFAULT';
     const session = db.getSessionSync(code);
     if (!session) {
-      return callback({ success: false, message: 'Oturum bulunamadı.' });
+      return callback && callback({ success: false, message: 'Oturum bulunamadı.' });
+    }
+
+    // Oturum duraklatılmışsa görüş eklemeyi engelle
+    if (session.status === 'paused') {
+      return callback && callback({ success: false, message: 'Bu masada görüş alımı moderatör tarafından duraklatılmıştır.' });
     }
 
     const participant = session.participants.find(p => p.id === participantId);
-    if (!participant) {
-      return callback({ success: false, message: 'Geçersiz katılımcı kimliği' });
+    if (!participant || participant.isBanned) {
+      return callback && callback({ success: false, message: 'Geçersiz katılımcı kimliği veya engellenmiş kullanıcı.' });
     }
 
-    db.addStatement(code, text, participant.nickname, false);
-    callback({ success: true, message: 'Görüşünüz moderasyon kuyruğuna alındı' });
+    try {
+      // Yapay zeka veya kural motoruyla görüş içeriğini denetle
+      const aiResult = await evaluateOpinionContent(text, session.question);
+      const aiWarning = aiResult.flagged ? aiResult.reason : null;
 
-    io.to(`moderator-${code}`).emit('moderation-queue', session.moderationQueue);
+      db.addStatement(code, text, participant.nickname, false, false, aiWarning);
+      if (callback) callback({ success: true, message: 'Görüşünüz moderasyon kuyruğuna alındı' });
+
+      io.to(`moderator-${code}`).emit('moderation-queue', session.moderationQueue);
+    } catch (err) {
+      if (callback) callback({ success: false, message: err.message });
+    }
   });
 
-  // Oy Verme
   socket.on('submit-vote', ({ sessionCode, participantId, statementId, voteValue }, callback) => {
     const code = sessionCode ? sessionCode.toUpperCase() : 'DEFAULT';
+    const session = db.getSessionSync(code);
+    if (session) {
+      if (session.status === 'paused') {
+        return callback && callback({ success: false, message: 'Masa duraklatıldığı için şu anda oy verilemez.' });
+      }
+      const participant = session.participants.find(p => p.id === participantId);
+      if (participant && participant.isBanned) {
+        return callback && callback({ success: false, message: 'Bu kullanıcı bu oturumdan engellenmiştir.' });
+      }
+    }
+
     const success = db.castVote(code, participantId, statementId, voteValue);
     
     if (success) {
       if (callback) callback({ success: true });
       runAndBroadcastAnalysis(code);
     } else {
-      if (callback) callback({ success: false, message: 'Oy kaydedilemedi' });
+      if (callback) callback({ success: false, message: 'Oy kaydedilemedi veya kullanıcı engelli' });
     }
   });
 
@@ -635,6 +751,7 @@ io.on('connection', (socket) => {
   // Görüş Onaylama
   socket.on('admin-approve-statement', ({ sessionCode, statementId }) => {
     const code = sessionCode ? sessionCode.toUpperCase() : 'DEFAULT';
+    if (!checkSocketAuth(code)) return;
     const statement = db.approveStatement(code, statementId);
     
     if (statement) {
@@ -648,6 +765,7 @@ io.on('connection', (socket) => {
   // Görüş Reddetme
   socket.on('admin-reject-statement', ({ sessionCode, statementId }) => {
     const code = sessionCode ? sessionCode.toUpperCase() : 'DEFAULT';
+    if (!checkSocketAuth(code)) return;
     const statement = db.rejectStatement(code, statementId);
     
     if (statement) {
@@ -659,6 +777,7 @@ io.on('connection', (socket) => {
   // Soru Güncelleme
   socket.on('admin-update-question', ({ sessionCode, newQuestion }) => {
     const code = sessionCode ? sessionCode.toUpperCase() : 'DEFAULT';
+    if (!checkSocketAuth(code)) return;
     db.updateSessionQuestion(code, newQuestion);
     io.to(`session-${code}`).emit('question-updated', newQuestion);
   });
@@ -666,6 +785,7 @@ io.on('connection', (socket) => {
   // Simülasyon Çalıştırma (Katılımcı Yük Testi)
   socket.on('admin-run-simulation', ({ sessionCode, count }, callback) => {
     const code = sessionCode ? sessionCode.toUpperCase() : 'DEFAULT';
+    if (!checkSocketAuth(code)) return;
     try {
       db.simulateBots(code, count);
       const session = db.getSessionSync(code);
@@ -682,6 +802,7 @@ io.on('connection', (socket) => {
   // Oturumu Sıfırlama
   socket.on('admin-reset-session', ({ sessionCode }, callback) => {
     const code = sessionCode ? sessionCode.toUpperCase() : 'DEFAULT';
+    if (!checkSocketAuth(code)) return;
     try {
       db.reset(code);
       const session = db.getSessionSync(code);
@@ -698,6 +819,59 @@ io.on('connection', (socket) => {
       if (callback) callback({ success: true });
     } catch (err) {
       if (callback) callback({ success: false, message: err.message });
+    }
+  });
+
+  // Oturum Durumu Güncelleme (Pause/Play)
+  socket.on('admin-update-session-status', ({ sessionCode, status }) => {
+    const code = sessionCode ? sessionCode.toUpperCase() : 'DEFAULT';
+    if (!checkSocketAuth(code)) return;
+    db.updateSessionStatus(code, status);
+    
+    // Hem normal odaya hem de moderatör odasına durum güncellemesini duyur
+    io.to(`session-${code}`).emit('session-status-updated', { status });
+    io.to(`moderator-${code}`).emit('session-status-updated', { status });
+  });
+
+  // Katılımcıyı Masadan Atma (Kick)
+  socket.on('admin-kick-participant', ({ sessionCode, participantId }) => {
+    const code = sessionCode ? sessionCode.toUpperCase() : 'DEFAULT';
+    if (!checkSocketAuth(code)) return;
+    const success = db.kickParticipant(code, participantId);
+    
+    if (success) {
+      const session = db.getSessionSync(code);
+      
+      // Odaya atılma olayını ve güncel durumları bildir
+      io.to(`session-${code}`).emit('participant-kicked', { participantId });
+      io.to(`session-${code}`).emit('participant-left', { participantId });
+      io.to(`moderator-${code}`).emit('participant-left', { participantId });
+      io.to(`moderator-${code}`).emit('participants-list', session.participants.map(p => ({ id: p.id, nickname: p.nickname, justification: p.justification, isBot: p.isBot })));
+      
+      io.to(`session-${code}`).emit('stats-update', { participantsCount: session.participants.length });
+      
+      // Analiz motorunu tetikle (oylar çıkarıldığı için koordinatlar güncellenecektir)
+      runAndBroadcastAnalysis(code);
+    }
+  });
+
+  // Kamp Sayısı Güncelleme
+  socket.on('admin-update-camps-count', ({ sessionCode, targetK }) => {
+    const code = sessionCode ? sessionCode.toUpperCase() : 'DEFAULT';
+    if (!checkSocketAuth(code)) return;
+    const success = db.updateSessionCampsCount(code, targetK);
+    if (success) {
+      runAndBroadcastAnalysis(code);
+    }
+  });
+
+  // Kamp Yeniden Adlandırma
+  socket.on('admin-rename-camp', ({ sessionCode, campId, newName }) => {
+    const code = sessionCode ? sessionCode.toUpperCase() : 'DEFAULT';
+    if (!checkSocketAuth(code)) return;
+    const success = db.renameSessionCamp(code, campId, newName);
+    if (success) {
+      runAndBroadcastAnalysis(code);
     }
   });
 
