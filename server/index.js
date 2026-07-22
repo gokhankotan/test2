@@ -76,16 +76,9 @@ app.get('/api/admin/sessions-overview', authenticateAdmin, async (req, res) => {
     let overview = [];
     if (db.isPrismaActive) {
       const dbSessions = await db.prisma.session.findMany({
-        where: {
-          creatorId: { not: null }
-        },
         include: {
-          opinions: {
-            where: { status: 'APPROVED' }
-          },
-          participants: {
-            where: { isBot: false }
-          }
+          opinions: true,
+          participants: true
         }
       });
 
@@ -95,25 +88,78 @@ app.get('/api/admin/sessions-overview', authenticateAdmin, async (req, res) => {
 
         return {
           code: session.code,
-          question: session.question,
+          title: session.title,
+          description: session.description || '',
+          question: session.question || '',
+          status: session.status,
+          visibility: session.visibility,
+          passwordText: session.passwordText,
           participantsCount: session.participants.filter(p => !p.isBanned).length,
-          statementsCount: session.opinions.length,
+          statementsCount: session.opinions.filter(o => o.status === 'APPROVED').length,
           polarisability
         };
       });
     } else {
       overview = Array.from(db.sessions.values())
-        .filter(s => s.creatorId !== null && s.creatorId !== undefined)
         .map(s => ({
           code: s.code,
-          question: s.question,
-          participantsCount: s.participants.filter(p => !p.isBot).length,
+          title: s.title,
+          description: s.description || '',
+          question: s.question || '',
+          status: s.status,
+          visibility: s.visibility,
+          passwordText: s.passwordText,
+          participantsCount: s.participants.filter(p => !p.isBanned).length,
           statementsCount: s.statements.length,
           polarisability: s.analysis ? s.analysis.polarisability : null
         }));
     }
 
     res.json({ success: true, sessions: overview });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 1.3 Admin Oturum Düzenleme API'si
+app.patch('/api/admin/sessions/:code', authenticateAdmin, async (req, res) => {
+  const { code } = req.params;
+  const { title, description, question, status, visibility, password } = req.body;
+  const upperCode = code.toUpperCase();
+
+  try {
+    const session = db.getSessionSync(upperCode);
+    if (!session) {
+      return res.status(404).json({ success: false, message: 'Oturum bulunamadı.' });
+    }
+
+    let newPasswordHash = session.passwordHash;
+    let newPasswordText = session.passwordText;
+    if (visibility === 'PASSWORD_PROTECTED' && password) {
+      newPasswordHash = await bcrypt.hash(password, 12);
+      newPasswordText = password;
+    } else if (visibility === 'PUBLIC') {
+      newPasswordHash = null;
+      newPasswordText = null;
+    }
+
+    const updated = db.updateSessionDetails(upperCode, {
+      title,
+      description,
+      question,
+      status,
+      visibility,
+      passwordHash: newPasswordHash,
+      passwordText: newPasswordText
+    });
+
+    // Socket.io ile odadaki herkese güncellemeleri duyur
+    io.to(`session-${upperCode}`).emit('session-settings-updated', { visibility, passwordText: newPasswordText });
+    io.to(`session-${upperCode}`).emit('question-updated', question);
+    io.to(`session-${upperCode}`).emit('session-status-updated', { status });
+    io.to(`moderator-${upperCode}`).emit('session-status-updated', { status });
+
+    res.json({ success: true, message: 'Oturum başarıyla güncellendi.', session: updated });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -1065,7 +1111,7 @@ io.on('connection', (socket) => {
   // Katılımcıyı Masadan Atma (Kick)
   socket.on('admin-kick-participant', ({ sessionCode, participantId }) => {
     const code = sessionCode ? sessionCode.toUpperCase() : 'DEFAULT';
-    if (!checkSocketAuth(code, true)) return;
+    if (!checkSocketAuth(code, false)) return;
     const success = db.kickParticipant(code, participantId);
     
     if (success) {

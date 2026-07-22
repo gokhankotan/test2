@@ -36,6 +36,68 @@ export default function AdminDashboard({
   const [editingCampId, setEditingCampId] = useState(null);
   const [editingCampName, setEditingCampName] = useState('');
 
+  // Oturum Düzenleme Modalı State'leri
+  const [editingSession, setEditingSession] = useState(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [editQuestion, setEditQuestion] = useState('');
+  const [editStatus, setEditStatus] = useState('active');
+  const [editVisibility, setEditVisibility] = useState('PUBLIC');
+  const [editPassword, setEditPassword] = useState('');
+  const [editError, setEditError] = useState('');
+  const [editSuccess, setEditSuccess] = useState('');
+
+  const handleOpenEditModal = (sessionObj) => {
+    setEditingSession(sessionObj);
+    setEditTitle(sessionObj.title || '');
+    setEditDesc(sessionObj.description || '');
+    setEditQuestion(sessionObj.question || '');
+    setEditStatus(sessionObj.status || 'active');
+    setEditVisibility(sessionObj.visibility || 'PUBLIC');
+    setEditPassword(sessionObj.passwordText || '');
+    setEditError('');
+    setEditSuccess('');
+  };
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    setEditError('');
+    setEditSuccess('');
+    const token = localStorage.getItem('admin_token');
+    if (!token) {
+      return setEditError(lang === 'tr' ? 'Oturum yetkiniz yok.' : 'Unauthorized.');
+    }
+
+    try {
+      const res = await fetch(`/api/admin/sessions/${editingSession.code}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          title: editTitle,
+          description: editDesc,
+          question: editQuestion,
+          status: editStatus,
+          visibility: editVisibility,
+          password: editVisibility === 'PASSWORD_PROTECTED' ? editPassword : ''
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return setEditError(data.message || (lang === 'tr' ? 'Güncelleme hatası.' : 'Update failed.'));
+      }
+      setEditSuccess(lang === 'tr' ? 'Oturum başarıyla güncellendi!' : 'Session updated successfully!');
+      setTimeout(() => {
+        setEditingSession(null);
+        window.location.reload();
+      }, 1500);
+    } catch {
+      setEditError(lang === 'tr' ? 'Bağlantı hatası oluştu.' : 'Connection error.');
+    }
+  };
+
   const handleSaveCampName = (campId) => {
     if (!editingCampName.trim()) return;
     onRenameCamp(campId, editingCampName.trim());
@@ -500,6 +562,7 @@ export default function AdminDashboard({
                   <th style={{ padding: '0.75rem' }}>{lang === 'tr' ? 'Katılımcı Sayısı' : 'Participants'}</th>
                   <th style={{ padding: '0.75rem' }}>{lang === 'tr' ? 'Görüş Sayısı' : 'Approved Opinions'}</th>
                   <th style={{ padding: '0.75rem' }}>{lang === 'tr' ? 'Kutuplaşma Derecesi' : 'Polarization Rate'}</th>
+                  <th style={{ padding: '0.75rem' }}>{lang === 'tr' ? 'İşlemler' : 'Actions'}</th>
                 </tr>
               </thead>
               <tbody>
@@ -524,13 +587,22 @@ export default function AdminDashboard({
                         {s.code} {activeSessionCode === s.code ? '⭐️' : ''}
                       </button>
                     </td>
-                    <td style={{ padding: '0.75rem', maxWidth: '400px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.question}>{s.question}</td>
+                    <td style={{ padding: '0.75rem', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.question}>{s.question}</td>
                     <td style={{ padding: '0.75rem' }}>{s.participantsCount}</td>
                     <td style={{ padding: '0.75rem' }}>{s.statementsCount}</td>
                     <td style={{ padding: '0.75rem' }}>
                       {s.polarisability !== null && s.polarisability !== undefined
                         ? `%${Math.round(s.polarisability)}`
                         : '—'}
+                    </td>
+                    <td style={{ padding: '0.75rem' }}>
+                      <button 
+                        onClick={() => handleOpenEditModal(s)}
+                        className="btn"
+                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderColor: '#c084fc', color: '#c084fc', minWidth: 'auto', background: 'transparent' }}
+                      >
+                        {lang === 'tr' ? '⚙️ Düzenle' : '⚙️ Edit'}
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -543,6 +615,143 @@ export default function AdminDashboard({
           </p>
         )}
       </div>
+
+      {/* Oturum Düzenleme Modalı */}
+      {editingSession && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.8)',
+          zIndex: 1000,
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: '1rem'
+        }}>
+          <div className="glass-panel" style={{
+            width: '100%',
+            maxWidth: '550px',
+            border: '1px solid rgba(168, 85, 247, 0.4)',
+            background: '#0d0720',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1.25rem',
+            padding: '2rem'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ fontSize: '1.3rem', color: '#c084fc', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Settings size={20} />
+                {lang === 'tr' ? `Oturumu Düzenle: ${editingSession.code}` : `Edit Session: ${editingSession.code}`}
+              </h2>
+              <button 
+                onClick={() => setEditingSession(null)}
+                style={{ background: 'none', border: 'none', color: '#fff', fontSize: '1.25rem', cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {editError && (
+              <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', padding: '0.6rem 0.8rem', borderRadius: 'var(--radius-md)', fontSize: '0.8rem', color: '#fca5a5' }}>
+                {editError}
+              </div>
+            )}
+            {editSuccess && (
+              <div style={{ background: 'rgba(52, 211, 153, 0.1)', border: '1px solid #34d399', padding: '0.6rem 0.8rem', borderRadius: 'var(--radius-md)', fontSize: '0.8rem', color: '#a7f3d0' }}>
+                {editSuccess}
+              </div>
+            )}
+
+            <form onSubmit={handleSaveEdit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div className="form-group">
+                <label className="form-label">{lang === 'tr' ? 'Masa Başlığı' : 'Table Title'}</label>
+                <input 
+                  type="text" 
+                  className="form-input" 
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  required 
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">{lang === 'tr' ? 'Açıklama' : 'Description'}</label>
+                <textarea 
+                  className="form-textarea" 
+                  rows={2}
+                  value={editDesc}
+                  onChange={(e) => setEditDesc(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">{lang === 'tr' ? 'Müzakere Sorusu' : 'Deliberation Question'}</label>
+                <textarea 
+                  className="form-textarea" 
+                  rows={2}
+                  value={editQuestion}
+                  onChange={(e) => setEditQuestion(e.target.value)}
+                  required 
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label className="form-label">{lang === 'tr' ? 'Erişim Türü' : 'Access Type'}</label>
+                  <select 
+                    className="form-input" 
+                    value={editVisibility}
+                    onChange={(e) => setEditVisibility(e.target.value)}
+                    style={{ background: '#110c22', color: '#fff' }}
+                  >
+                    <option value="PUBLIC">{lang === 'tr' ? '🌐 Herkese Açık' : '🌐 Public'}</option>
+                    <option value="PASSWORD_PROTECTED">{lang === 'tr' ? '🔒 Şifre Korumalı' : '🔒 Password Protected'}</option>
+                  </select>
+                </div>
+
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label className="form-label">{lang === 'tr' ? 'Durum' : 'Status'}</label>
+                  <select 
+                    className="form-input" 
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value)}
+                    style={{ background: '#110c22', color: '#fff' }}
+                  >
+                    <option value="active">{lang === 'tr' ? '▶️ Aktif' : '▶️ Active'}</option>
+                    <option value="paused">{lang === 'tr' ? '⏸️ Durduruldu' : '⏸️ Paused'}</option>
+                  </select>
+                </div>
+              </div>
+
+              {editVisibility === 'PASSWORD_PROTECTED' && (
+                <div className="form-group">
+                  <label className="form-label">{lang === 'tr' ? 'Masa Giriş Şifresi' : 'Table Access Password'}</label>
+                  <input 
+                    type="text" 
+                    className="form-input" 
+                    placeholder={lang === 'tr' ? 'Şifre girin...' : 'Enter password...'}
+                    value={editPassword}
+                    onChange={(e) => setEditPassword(e.target.value)}
+                    required={editVisibility === 'PASSWORD_PROTECTED'}
+                  />
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setEditingSession(null)} style={{ flex: 1 }}>
+                  {lang === 'tr' ? 'İptal' : 'Cancel'}
+                </button>
+                <button type="submit" className="btn" style={{ flex: 1, background: 'var(--color-primary)' }}>
+                  {lang === 'tr' ? 'Değişiklikleri Kaydet' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

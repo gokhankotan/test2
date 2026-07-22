@@ -645,6 +645,38 @@ class Database {
     }
   }
 
+  updateSessionDetails(sessionCode, { title, description, question, status, visibility, passwordHash, passwordText }) {
+    const session = this.sessions.get(sessionCode);
+    if (!session) return null;
+
+    if (title !== undefined) session.title = title;
+    if (description !== undefined) session.description = description;
+    if (question !== undefined) session.question = question;
+    if (status !== undefined) session.status = status;
+    if (visibility !== undefined) session.visibility = visibility;
+    if (passwordHash !== undefined) session.passwordHash = passwordHash;
+    if (passwordText !== undefined) session.passwordText = passwordText;
+    session.updatedAt = new Date();
+
+    if (this.isPrismaActive) {
+      this.prisma.session.update({
+        where: { code: sessionCode },
+        data: {
+          title: session.title,
+          description: session.description,
+          question: session.question,
+          status: session.status,
+          visibility: session.visibility,
+          passwordHash: session.passwordHash,
+          passwordText: session.passwordText
+        }
+      }).catch(err => {
+        console.error('Oturum detay güncelleme hatası:', err.message);
+      });
+    }
+    return session;
+  }
+
   updateAnalysis(sessionCode, analysisResults) {
     const session = this.sessions.get(sessionCode);
     if (!session) return;
