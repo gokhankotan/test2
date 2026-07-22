@@ -9,7 +9,7 @@ import path from 'path';
 import { parse } from 'csv-parse/sync';
 import { db } from '../server/database.js';
 import { calculatePCA, runKMeansWithStability, analyzeCampsAndBridges, alignCentroids, calculatePolarisability } from '../server/algorithms.js';
-import { generateClusterSummary } from '../server/services/llm.service.js';
+import { generateClusterSummary, generateAxisLabel } from '../server/services/llm.service.js';
 
 async function performAnalysisForScript(sessionCode) {
   console.log(`\n🔍 '${sessionCode}' için analiz motoru çalıştırılıyor...`);
@@ -50,7 +50,26 @@ async function performAnalysisForScript(sessionCode) {
   });
 
   // 2. PCA Koordinatlarını hesapla
-  const { scores, varianceExplained } = calculatePCA(X, 2);
+  const { scores, loadings, varianceExplained } = calculatePCA(X, 2);
+
+  // 2b. PCA Eksen Yorumlanabilirliği Etiketlerini Oluştur
+  const getTop3LoadingStatements = (axisIdx) => {
+    if (!loadings || !loadings[axisIdx]) return [];
+    const mapped = loadings[axisIdx].map((val, idx) => ({ val: Math.abs(val), idx, originalVal: val }));
+    mapped.sort((a, b) => b.val - a.val);
+    return mapped.slice(0, 3).map(item => ({
+      statement: statements[item.idx],
+      loading: item.originalVal
+    }));
+  };
+
+  const top3X = getTop3LoadingStatements(0);
+  const top3Y = getTop3LoadingStatements(1);
+
+  const [axisLabelX, axisLabelY] = await Promise.all([
+    generateAxisLabel('x', top3X),
+    generateAxisLabel('y', top3Y)
+  ]);
 
   let minX = Infinity, maxX = -Infinity;
   let minY = Infinity, maxY = -Infinity;
@@ -157,6 +176,7 @@ async function performAnalysisForScript(sessionCode) {
     })),
     polarisability,
     insufficientVariance,
+    axisLabels: { x: axisLabelX, y: axisLabelY },
     targetK: session.targetK || 3,
     polarizationHistory: session.polarizationHistory || [],
     varianceExplained,

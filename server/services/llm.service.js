@@ -198,3 +198,65 @@ Eğer görüş tamamen uygunsa:
   }
 }
 
+/**
+ * PCA eksenini şekillendiren en yüksek ağırlıklı ilk 3 görüş üzerinden Türkçe eksen etiketi üretir.
+ * @param {string} axisName - 'x' veya 'y'
+ * @param {Array} topStatements - En yüksek loading değerine sahip 3 görüş ({ statement, loading })
+ * @returns {Promise<string>} Kısa Türkçe etiket metni
+ */
+export async function generateAxisLabel(axisName, topStatements) {
+  // Eğer OpenAI istemcisi yoksa veya hiç görüş yoksa doğrudan fallback çalıştır
+  if (!openaiClient || !topStatements || topStatements.length === 0) {
+    return generateAxisFallbackSummary(axisName, topStatements);
+  }
+
+  try {
+    const statementsText = topStatements
+      .map((st, i) => `${i + 1}. Görüş: "${st.statement.text}" (Yük Ağırlığı: ${st.loading.toFixed(3)})`)
+      .join('\n');
+
+    const prompt = `
+Aşağıda, bir müzakere platformunda yapılan Temel Bileşenler Analizi (PCA) sonucunda ${axisName.toUpperCase()} ekseninin (boyutunun) şekillenmesinde en yüksek etkiye (ağırlığa) sahip olan ilk 3 görüş listelenmiştir:
+
+${statementsText}
+
+Görevin: Bu 3 görüşün ortak temasını, bu eksen üzerinde katılımcıların hangi temel ayrım veya kutuplaşma (örneğin "Bireysel araç sahipliği vs. Toplu taşıma desteği" ya da "Maliyet kaygıları vs. Çevre duyarlılığı") etrafında konumlandığını özetleyen çok kısa, maksimum 5-6 kelimelik, net bir Türkçe başlık/etiket yaz.
+Notlar:
+- Başlangıç kelimeleri "Bu eksen...", "Özetle...", "Ayrım..." olmamalıdır. Doğrudan ekseni niteleyen kelime grubunu yaz (örn: "Toplu Taşıma Odaklılık vs Bireysel Araç").
+- Çıktı sadece bu etiket metninden oluşmalıdır, başka açıklama veya tırnak işareti ekleme.
+`;
+
+    const response = await openaiClient.chat.completions.create({
+      model: modelName,
+      messages: [
+        { role: 'system', content: 'Sen PCA eksenlerini temsil ettikleri ana fikre göre Türkçe etiketleyen bir istatistik asistanısın.' },
+        { role: 'user', content: prompt }
+      ],
+      max_tokens: 50,
+      temperature: 0.3,
+    });
+
+    const label = response.choices[0]?.message?.content?.trim();
+    if (label) {
+      return label.replace(/^"|"$/g, '');
+    }
+    throw new Error('LLM boş yanıt döndürdü.');
+  } catch (err) {
+    console.error(`LLM eksen etiketi oluşturma hatası (${axisName} için), fallback uygulanıyor:`, err.message);
+    return generateAxisFallbackSummary(axisName, topStatements);
+  }
+}
+
+function generateAxisFallbackSummary(axisName, topStatements) {
+  if (!topStatements || topStatements.length === 0) {
+    return axisName === 'x' ? 'Fikir Ayrışması (Boyut 1)' : 'Görüş Ayrışması (Boyut 2)';
+  }
+  // En yüksek yüke sahip ilk görüşü kısaltıp gösterelim
+  let firstText = topStatements[0].statement.text.replace(/["']/g, '').trim();
+  if (firstText.length > 30) {
+    firstText = firstText.substring(0, 27) + '...';
+  }
+  return `${axisName.toUpperCase()} Ekseni: "${firstText}" Odaklılık`;
+}
+
+

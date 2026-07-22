@@ -15,7 +15,7 @@ import bcrypt from 'bcrypt';
 import { db } from './database.js';
 import { calculatePCA, runKMeansWithStability, analyzeCampsAndBridges, alignCentroids, calculatePolarisability } from './algorithms.js';
 import { authenticateAdmin, passwordRateLimiter, checkParticipantAccess, checkModerator, verifySessionToken } from './middleware/auth.middleware.js';
-import { generateClusterSummary, evaluateOpinionContent } from './services/llm.service.js';
+import { generateClusterSummary, evaluateOpinionContent, generateAxisLabel } from './services/llm.service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -467,7 +467,26 @@ async function performAnalysis(sessionCode) {
   });
 
   // 2. PCA Koordinatlarını hesapla (null-aware NIPALS, pairwise deletion)
-  const { scores, varianceExplained } = calculatePCA(X, 2);
+  const { scores, loadings, varianceExplained } = calculatePCA(X, 2);
+
+  // 2b. PCA Eksen Yorumlanabilirliği Etiketlerini Oluştur
+  const getTop3LoadingStatements = (axisIdx) => {
+    if (!loadings || !loadings[axisIdx]) return [];
+    const mapped = loadings[axisIdx].map((val, idx) => ({ val: Math.abs(val), idx, originalVal: val }));
+    mapped.sort((a, b) => b.val - a.val);
+    return mapped.slice(0, 3).map(item => ({
+      statement: statements[item.idx],
+      loading: item.originalVal
+    }));
+  };
+
+  const top3X = getTop3LoadingStatements(0);
+  const top3Y = getTop3LoadingStatements(1);
+
+  const [axisLabelX, axisLabelY] = await Promise.all([
+    generateAxisLabel('x', top3X),
+    generateAxisLabel('y', top3Y)
+  ]);
 
   // Koordinatları görselleştirme için normalize et (-80 ile 80 arasına çek)
   let minX = Infinity, maxX = -Infinity;
@@ -578,6 +597,7 @@ async function performAnalysis(sessionCode) {
     })),
     polarisability,
     insufficientVariance,
+    axisLabels: { x: axisLabelX, y: axisLabelY },
     targetK: session.targetK || 3,
     polarizationHistory: session.polarizationHistory || [],
     varianceExplained,

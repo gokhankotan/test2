@@ -135,6 +135,36 @@ export default function LiveScreen({ question, analysis, stats, status = 'active
                 <line x1="200" y1="0" x2="200" y2="400" className="chart-axis" />
                 <line x1="0" y1="200" x2="400" y2="200" className="chart-axis" />
 
+                {/* Eksen Etiketleri */}
+                {analysis?.axisLabels && (
+                  <g style={{ opacity: 0.85 }}>
+                    {/* X Eksen Etiketi (Sağ uçta) */}
+                    <text
+                      x="390"
+                      y="190"
+                      fill="#e2e8f0"
+                      fontSize="9"
+                      fontWeight="700"
+                      textAnchor="end"
+                      style={{ textShadow: '0 1px 4px #000' }}
+                    >
+                      {analysis.axisLabels.x} →
+                    </text>
+                    {/* Y Eksen Etiketi (Üst uçta) */}
+                    <text
+                      x="215"
+                      y="18"
+                      fill="#e2e8f0"
+                      fontSize="9"
+                      fontWeight="700"
+                      textAnchor="start"
+                      style={{ textShadow: '0 1px 4px #000' }}
+                    >
+                      {analysis.axisLabels.y} ↑
+                    </text>
+                  </g>
+                )}
+
                 {/* Katılımcı Noktaları */}
                 {points.map((pt) => {
                   const cx = 200 + pt.x * 2;
