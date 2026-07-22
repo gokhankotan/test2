@@ -2,7 +2,7 @@ import { db } from '../server/database.js';
 import fs from 'fs';
 import path from 'path';
 import { parse } from 'csv-parse/sync';
-import { calculatePCA, runKMeansWithStability, analyzeCampsAndBridges, alignCentroids } from '../server/algorithms.js';
+import { calculatePCA, runKMeansWithStability, analyzeCampsAndBridges, alignCentroids, calculatePolarisability } from '../server/algorithms.js';
 
 async function verifyPolis() {
   await db.initialized;
@@ -112,21 +112,17 @@ async function verifyPolis() {
 
   const camps = Array(k).fill(0).map((_, cIdx) => {
     const size = points.filter((_, idx) => assignments[idx] === cIdx).length;
-    return { id: cIdx, size };
+    const centroid = centroids[cIdx] || [0, 0];
+    return { 
+      id: cIdx, 
+      size,
+      x: centroid[0],
+      y: centroid[1]
+    };
   });
 
-  let distSum = 0, distCount = 0;
-  for (let i = 0; i < k; i++) {
-    for (let j = i + 1; j < k; j++) {
-      if (camps[i].size > 0 && camps[j].size > 0) {
-        const dx = centroids[i][0] - centroids[j][0];
-        const dy = centroids[i][1] - centroids[j][1];
-        distSum += Math.sqrt(dx * dx + dy * dy);
-        distCount++;
-      }
-    }
-  }
-  const polarisability = distCount > 0 ? Math.min(Math.round((distSum / distCount) / 160 * 100), 100) : 0;
+  const polResult = calculatePolarisability(points, camps);
+  const polarisability = polResult.polarisability;
 
   console.log("\n================ ANALİZ MOTURU DOĞRULAMA ÇIKTISI ================");
   console.log(`📌 İçe Aktarılan Katılımcı Sayısı (N): ${n}`);

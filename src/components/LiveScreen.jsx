@@ -285,10 +285,31 @@ export default function LiveScreen({ question, analysis, stats, status = 'active
             <div className="stat-label">{t('liveStatOpinions', lang)}</div>
           </div>
 
-          <div className="stat-box glass-panel">
+          <div className="stat-box glass-panel" style={{ position: 'relative' }}>
             <Split style={{ margin: '0 auto', color: 'var(--color-warning)' }} size={24} />
-            <div className="stat-value" style={{ marginTop: '0.25rem' }}>%{polarisability}</div>
+            {analysis?.insufficientVariance ? (
+              <div className="stat-value" style={{ marginTop: '0.25rem', fontSize: '0.72rem', color: 'var(--text-muted)', padding: '0 0.5rem', minHeight: '34px', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1.2 }}>
+                {lang === 'tr' ? 'Kutuplaşma hesaplanamadı (tek grup / yetersiz ayrışma)' : 'Unable to calculate polarization (insufficient variance)'}
+              </div>
+            ) : (
+              <div className="stat-value" style={{ marginTop: '0.25rem' }}>%{polarisability}</div>
+            )}
             <div className="stat-label">{t('liveStatPolarization', lang)}</div>
+            
+            {showVarianceWarning && (
+              <div style={{
+                fontSize: '0.68rem',
+                color: '#fbbf24',
+                marginTop: '0.4rem',
+                borderTop: '1px solid var(--border-light)',
+                paddingTop: '0.4rem',
+                lineHeight: 1.2
+              }}>
+                {lang === 'tr'
+                  ? `Bu oran sınırlı bir varyansa (%${Math.round(totalVariance * 100)}) dayanıyor, temkinli yorumlayın.`
+                  : `This rate is based on limited variance (%${Math.round(totalVariance * 100)}), interpret with caution.`}
+              </div>
+            )}
           </div>
         </div>
 

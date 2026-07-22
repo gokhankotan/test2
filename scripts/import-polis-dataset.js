@@ -8,7 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import { parse } from 'csv-parse/sync';
 import { db } from '../server/database.js';
-import { calculatePCA, runKMeansWithStability, analyzeCampsAndBridges, alignCentroids } from '../server/algorithms.js';
+import { calculatePCA, runKMeansWithStability, analyzeCampsAndBridges, alignCentroids, calculatePolarisability } from '../server/algorithms.js';
 import { generateClusterSummary } from '../server/services/llm.service.js';
 
 async function performAnalysisForScript(sessionCode) {
@@ -140,20 +140,10 @@ async function performAnalysisForScript(sessionCode) {
     };
   }));
 
-  // Kutuplaşma
-  let distSum = 0;
-  let distCount = 0;
-  for (let i = 0; i < k; i++) {
-    for (let j = i + 1; j < k; j++) {
-      if (camps[i].size > 0 && camps[j].size > 0) {
-        const dx = camps[i].x - camps[j].x;
-        const dy = camps[i].y - camps[j].y;
-        distSum += Math.sqrt(dx * dx + dy * dy);
-        distCount++;
-      }
-    }
-  }
-  const polarisability = distCount > 0 ? Math.min(Math.round((distSum / distCount) / 160 * 100), 100) : 0;
+  // Kutuplaşma Derecesini (Polarisability) yeni formülle hesapla
+  const polResult = calculatePolarisability(points, camps);
+  const polarisability = polResult.polarisability;
+  const insufficientVariance = polResult.insufficientVariance;
 
   const analysisResult = {
     points,
@@ -166,6 +156,7 @@ async function performAnalysisForScript(sessionCode) {
       campApprovalRates: b.campApprovalRates.map(r => Math.round(r * 100))
     })),
     polarisability,
+    insufficientVariance,
     targetK: session.targetK || 3,
     polarizationHistory: session.polarizationHistory || [],
     varianceExplained,
@@ -173,7 +164,9 @@ async function performAnalysisForScript(sessionCode) {
   };
 
   db.updateAnalysis(sessionCode, analysisResult);
-  db.addPolarizationHistoryEntry(sessionCode, polarisability);
+  if (polarisability !== null) {
+    db.addPolarizationHistoryEntry(sessionCode, polarisability);
+  }
   analysisResult.polarizationHistory = session.polarizationHistory || [];
 
   return analysisResult;

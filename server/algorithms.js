@@ -496,3 +496,59 @@ export function alignCentroids(newCentroids, assignments, previousCentroids) {
 
   return { assignments: alignedAssignments, centroids: alignedCentroids };
 }
+
+/**
+ * ANOVA tabanlı varyans formülüyle kutuplaşma derecesini (polarisability) hesaplar.
+ *
+ * @param {Array} points - Katılımcı noktaları listesi, her biri { x, y, campId } içermeli.
+ * @param {Array} camps - Kamp (küme) listesi, her biri { id, size, x, y } içermeli.
+ * @returns {{polarisability: number|null, insufficientVariance: boolean}}
+ */
+export function calculatePolarisability(points, camps) {
+  const n = points.length;
+  if (n === 0) {
+    return { polarisability: null, insufficientVariance: true };
+  }
+
+  // 1. Genel Merkez'i (tüm noktaların ortalaması) hesapla
+  let sumX = 0;
+  let sumY = 0;
+  for (let i = 0; i < n; i++) {
+    sumX += points[i].x;
+    sumY += points[i].y;
+  }
+  const genelMerkezX = sumX / n;
+  const genelMerkezY = sumY / n;
+
+  // 2. Toplam Varyans'ı hesapla: Σ_i [ ||nokta_i - genelMerkez||² ]
+  let totalVariance = 0;
+  for (let i = 0; i < n; i++) {
+    const dx = points[i].x - genelMerkezX;
+    const dy = points[i].y - genelMerkezY;
+    totalVariance += dx * dx + dy * dy;
+  }
+
+  // Guard Clause: ToplamVaryans === 0 (veya kayan noktalı sayı hassasiyeti için çok küçükse)
+  if (totalVariance <= 1e-9) {
+    return { polarisability: null, insufficientVariance: true };
+  }
+
+  // 3. Kamplar Arası Varyans'ı hesapla: Σ_k [ n_k * ||merkez_k - genelMerkez||² ]
+  let betweenCampVariance = 0;
+  for (let k = 0; k < camps.length; k++) {
+    const camp = camps[k];
+    const n_k = camp.size;
+    const dx = camp.x - genelMerkezX;
+    const dy = camp.y - genelMerkezY;
+    betweenCampVariance += n_k * (dx * dx + dy * dy);
+  }
+
+  // 4. Kutuplaşma derecesini hesapla: (KamplarArasıVaryans / ToplamVaryans) * 100
+  let polarisability = (betweenCampVariance / totalVariance) * 100;
+
+  return {
+    polarisability: Math.round(polarisability),
+    insufficientVariance: false
+  };
+}
+

@@ -13,7 +13,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 
 import { db } from './database.js';
-import { calculatePCA, runKMeansWithStability, analyzeCampsAndBridges, alignCentroids } from './algorithms.js';
+import { calculatePCA, runKMeansWithStability, analyzeCampsAndBridges, alignCentroids, calculatePolarisability } from './algorithms.js';
 import { authenticateAdmin, passwordRateLimiter, checkParticipantAccess, checkModerator, verifySessionToken } from './middleware/auth.middleware.js';
 import { generateClusterSummary, evaluateOpinionContent } from './services/llm.service.js';
 
@@ -561,20 +561,10 @@ async function performAnalysis(sessionCode) {
     };
   }));
 
-  // Kutuplaşma Derecesini (Polarisability) hesapla
-  let distSum = 0;
-  let distCount = 0;
-  for (let i = 0; i < k; i++) {
-    for (let j = i + 1; j < k; j++) {
-      if (camps[i].size > 0 && camps[j].size > 0) {
-        const dx = camps[i].x - camps[j].x;
-        const dy = camps[i].y - camps[j].y;
-        distSum += Math.sqrt(dx * dx + dy * dy);
-        distCount++;
-      }
-    }
-  }
-  const polarisability = distCount > 0 ? Math.min(Math.round((distSum / distCount) / 160 * 100), 100) : 0;
+  // Kutuplaşma Derecesini (Polarisability) yeni formülle hesapla
+  const polResult = calculatePolarisability(points, camps);
+  const polarisability = polResult.polarisability;
+  const insufficientVariance = polResult.insufficientVariance;
 
   const analysis = {
     points,
@@ -587,6 +577,7 @@ async function performAnalysis(sessionCode) {
       campApprovalRates: b.campApprovalRates.map(r => Math.round(r * 100))
     })),
     polarisability,
+    insufficientVariance,
     targetK: session.targetK || 3,
     polarizationHistory: session.polarizationHistory || [],
     varianceExplained,
@@ -594,7 +585,9 @@ async function performAnalysis(sessionCode) {
   };
 
   db.updateAnalysis(sessionCode, analysis);
-  db.addPolarizationHistoryEntry(sessionCode, polarisability);
+  if (polarisability !== null) {
+    db.addPolarizationHistoryEntry(sessionCode, polarisability);
+  }
   
   // Güncel geçmişi analize tekrar yerleştir
   analysis.polarizationHistory = session.polarizationHistory || [];

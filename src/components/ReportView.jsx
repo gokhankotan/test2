@@ -58,6 +58,10 @@ export default function ReportView({ onBack, sessionCode, lang = 'tr' }) {
 
   const { question, createdAt, participantsCount, statementsCount, analysis, participants } = reportData;
 
+  const varianceExplained = analysis?.varianceExplained || [];
+  const totalVariance = varianceExplained.reduce((s, v) => s + v, 0);
+  const showVarianceWarning = !analysis?.insufficientData && !analysis?.insufficientVariance && varianceExplained.length > 0 && totalVariance < 0.40;
+
   return (
     <div style={{ background: '#f3f4f6', minHeight: '100vh', padding: '2rem 1rem' }}>
       {/* Yazdırma Esnasında Gizlenecek Kontroller */}
@@ -115,10 +119,38 @@ export default function ReportView({ onBack, sessionCode, lang = 'tr' }) {
           <p style={{ fontSize: '1.25rem', fontWeight: 600, color: '#111', lineHeight: 1.4, margin: '0.5rem 0' }}>
             {question}
           </p>
-          <div style={{ display: 'flex', gap: '2rem', marginTop: '1rem', background: '#f3f4f6', padding: '1rem', borderRadius: 'var(--radius-md)' }}>
-            <div><strong>{lang === 'tr' ? 'Katılımcı Sayısı:' : 'Participants:'}</strong> {participantsCount}</div>
-            <div><strong>{lang === 'tr' ? 'Toplam Görüş Sayısı:' : 'Total Opinions:'}</strong> {statementsCount}</div>
-            <div><strong>{lang === 'tr' ? 'Kutuplaşma Derecesi:' : 'Polarization:'}</strong> {analysis?.insufficientData ? '—' : `%${analysis?.polarisability || 0}`}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '1rem', background: '#f3f4f6', padding: '1rem', borderRadius: 'var(--radius-md)' }}>
+            <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
+              <div><strong>{lang === 'tr' ? 'Katılımcı Sayısı:' : 'Participants:'}</strong> {participantsCount}</div>
+              <div><strong>{lang === 'tr' ? 'Toplam Görüş Sayısı:' : 'Total Opinions:'}</strong> {statementsCount}</div>
+              <div>
+                <strong>{lang === 'tr' ? 'Kutuplaşma Derecesi:' : 'Polarization:'}</strong>{' '}
+                {analysis?.insufficientData ? '—' : (
+                  analysis?.insufficientVariance ? (
+                    <span style={{ color: '#6b7280', fontSize: '0.9rem' }}>
+                      {lang === 'tr' ? 'Kutuplaşma hesaplanamadı (tek grup / yetersiz ayrışma)' : 'Unable to calculate polarization (insufficient variance)'}
+                    </span>
+                  ) : `%${analysis?.polarisability}`
+                )}
+              </div>
+            </div>
+            
+            {showVarianceWarning && (
+              <div style={{
+                fontSize: '0.8rem',
+                color: '#b45309',
+                background: '#fffbeb',
+                border: '1px solid #fde68a',
+                padding: '0.4rem 0.85rem',
+                borderRadius: 'var(--radius-sm)',
+                marginTop: '0.25rem',
+                lineHeight: 1.3
+              }}>
+                ⚠️ {lang === 'tr'
+                  ? `Bu oran sınırlı bir varyansa (%${Math.round(totalVariance * 100)}) dayanıyor, temkinli yorumlayın.`
+                  : `This rate is based on limited variance (%${Math.round(totalVariance * 100)}), interpret with caution.`}
+              </div>
+            )}
           </div>
         </div>
 
