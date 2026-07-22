@@ -237,6 +237,26 @@ async function performAnalysisForScript(sessionCode) {
   });
   const participationGini = calculateGini(opinionCounts);
 
+  // 5d. Oy Tamamlama Oranı (Vote Completion Rate) Hesapla
+  const totalNonBotParticipants = nonBotParticipants.length;
+  const totalApprovedOpinions = statements.length;
+
+  let totalVotesCount = 0;
+  if (totalNonBotParticipants > 0 && totalApprovedOpinions > 0) {
+    const approvedOpinionIds = new Set(statements.map(st => st.id));
+    nonBotParticipants.forEach(p => {
+      Object.keys(p.votes).forEach(opId => {
+        if (approvedOpinionIds.has(opId)) {
+          totalVotesCount++;
+        }
+      });
+    });
+  }
+
+  const voteCompletionRate = (totalNonBotParticipants > 0 && totalApprovedOpinions > 0)
+    ? parseFloat(((totalVotesCount / (totalNonBotParticipants * totalApprovedOpinions)) * 100).toFixed(1))
+    : 0;
+
   // Kutuplaşma Derecesini (Polarisability) yeni formülle hesapla
   const polResult = calculatePolarisability(points, camps);
   const polarisability = polResult.polarisability;
@@ -257,6 +277,7 @@ async function performAnalysisForScript(sessionCode) {
     axisLabels: { x: axisLabelX, y: axisLabelY },
     subClusters: finalSubClusters,
     participationGini,
+    voteCompletionRate,
     targetK: session.targetK || 3,
     polarizationHistory: session.polarizationHistory || [],
     varianceExplained,

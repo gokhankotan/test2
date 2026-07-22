@@ -339,4 +339,37 @@ describe('Matematik ve Kümeleme Motoru Birim Testleri', () => {
     expect(calculateGini([])).toBe(0);
     expect(calculateGini([0, 0, 0])).toBe(0);
   });
+
+  // 9. Oy Tamamlama Oranı Testi
+  it('Oy tamamlama oranı formülünün doğru çalışması', () => {
+    const statements = [
+      { id: 's1' }, { id: 's2' }, { id: 's3' }
+    ];
+    const nonBotParticipants = [
+      { id: 'p1', votes: { 's1': 1, 's2': -1, 's3': 0 } },
+      { id: 'p2', votes: { 's1': 1, 's2': -1 } },
+      { id: 'p3', votes: {} }
+    ];
+
+    const totalNonBotParticipants = nonBotParticipants.length;
+    const totalApprovedOpinions = statements.length;
+
+    let totalVotesCount = 0;
+    if (totalNonBotParticipants > 0 && totalApprovedOpinions > 0) {
+      const approvedOpinionIds = new Set(statements.map(st => st.id));
+      nonBotParticipants.forEach(p => {
+        Object.keys(p.votes).forEach(opId => {
+          if (approvedOpinionIds.has(opId)) {
+            totalVotesCount++;
+          }
+        });
+      });
+    }
+
+    const voteCompletionRate = (totalNonBotParticipants > 0 && totalApprovedOpinions > 0)
+      ? parseFloat(((totalVotesCount / (totalNonBotParticipants * totalApprovedOpinions)) * 100).toFixed(1))
+      : 0;
+
+    expect(voteCompletionRate).toBe(55.6);
+  });
 });

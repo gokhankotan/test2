@@ -142,6 +142,10 @@ export default function ReportView({ onBack, sessionCode, lang = 'tr' }) {
                 <strong>{lang === 'tr' ? 'Katılım Eşitliği (Gini):' : 'Participation Equality (Gini):'}</strong>{' '}
                 {analysis?.participationGini !== undefined ? analysis.participationGini : '—'}
               </div>
+              <div>
+                <strong>{lang === 'tr' ? 'Oy Tamamlama Oranı:' : 'Vote Completion Rate:'}</strong>{' '}
+                {analysis?.voteCompletionRate !== undefined ? `%${analysis.voteCompletionRate}` : '—'}
+              </div>
             </div>
             
             {showVarianceWarning && (
@@ -175,6 +179,23 @@ export default function ReportView({ onBack, sessionCode, lang = 'tr' }) {
                 ⚠️ {lang === 'tr'
                   ? 'Görüş üretimi az sayıda kişide yoğunlaşmış.'
                   : 'Opinion production is concentrated in a small number of people.'}
+              </div>
+            )}
+
+            {analysis?.voteCompletionRate < 20 && (
+              <div style={{
+                fontSize: '0.8rem',
+                color: '#b45309',
+                background: '#fffbeb',
+                border: '1px solid #fde68a',
+                padding: '0.4rem 0.85rem',
+                borderRadius: 'var(--radius-sm)',
+                marginTop: '0.25rem',
+                lineHeight: 1.3
+              }}>
+                ⚠️ {lang === 'tr'
+                  ? 'Düşük tamamlama oranı analiz güvenilirliğini etkileyebilir.'
+                  : 'Low completion rate may affect analysis reliability.'}
               </div>
             )}
           </div>
