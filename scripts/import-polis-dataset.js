@@ -245,14 +245,47 @@ async function main() {
     if (masterAdmin) adminId = masterAdmin.id;
   }
 
-  // 4. Yeni Oturumu Oluştur (visibility: PASSWORD_PROTECTED)
+  // 4. summary.csv dosyasını oku ve dinamik meta verileri belirle
+  let title = 'Pol.is İçe Aktarılan Veriseti';
+  let question = 'Müzakere masası sorusu';
+  let description = 'Pol.is Açık Veri Seti (CC BY 4.0 Lisanslı Referans Veri Seti)';
+  let datasetName = path.basename(datasetPath);
+
+  const summaryFilePath = path.join(datasetPath, 'summary.csv');
+  if (fs.existsSync(summaryFilePath)) {
+    try {
+      const summaryLines = fs.readFileSync(summaryFilePath, 'utf8').split('\n');
+      const summaryObj = {};
+      summaryLines.forEach(line => {
+        const parts = line.split(',');
+        if (parts.length >= 2) {
+          const key = parts[0].trim();
+          const val = parts.slice(1).join(',').trim().replace(/^"|"$/g, '');
+          summaryObj[key] = val;
+        }
+      });
+      if (summaryObj.topic) {
+        title = `Pol.is: ${summaryObj.topic}`;
+        datasetName = summaryObj.topic;
+      }
+      if (summaryObj['conversation-description']) {
+        question = summaryObj['conversation-description'];
+        description = `Pol.is "${summaryObj.topic}" müzakeresi veriseti.`;
+      }
+    } catch (e) {
+      console.log('⚠️ summary.csv okunurken hata oluştu, varsayılan değerler kullanılacak:', e.message);
+    }
+  }
+
+  // Yeni Oturumu Oluştur (visibility: PASSWORD_PROTECTED)
   const session = db.createSessionSync({
     code: sessionCode,
-    title: 'Pol.is Seattle 15$/Hour Debate',
-    description: 'Pol.is Open Dataset — 15-per-hour-seattle (CC BY 4.0 Lisanslı Referans Veri Seti)',
-    question: 'Should Seattle raise the minimum wage to $15 per hour for workers?',
+    title: title,
+    description: description,
+    question: question,
     visibility: 'PASSWORD_PROTECTED',
-    creatorId: adminId
+    creatorId: adminId,
+    skipDefaultStatements: true
   });
 
   // Varsayılan ifadeleri temizle
@@ -267,7 +300,7 @@ async function main() {
     const pObj = {
       id,
       nickname,
-      justification: 'Pol.is 15-per-hour-seattle katılımcısı',
+      justification: `Pol.is ${datasetName} katılımcısı`,
       votes: {},
       isBot: false,
       isBanned: false,
