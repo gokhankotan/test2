@@ -21,6 +21,7 @@ enum OpinionStatus {
 model Admin {
   id           String    @id @default(uuid())
   email        String    @unique
+  username     String    @unique
   passwordHash String
   sessions     Session[]
   createdAt    DateTime  @default(now())

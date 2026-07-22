@@ -25,6 +25,7 @@ export default function App() {
   const [activeSessionCode, setActiveSessionCode] = useState('DEFAULT');
   const [isModerator, setIsModerator] = useState(false);
   const [moderationQueue, setModerationQueue] = useState([]);
+  const [adminUsername, setAdminUsername] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [showAdminAuthModal, setShowAdminAuthModal] = useState(false);
@@ -313,7 +314,7 @@ export default function App() {
     fetch('/api/admin/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: 'admin@muzakere.local', password: adminPassword })
+      body: JSON.stringify({ username: adminUsername, password: adminPassword })
     })
     .then(res => res.json())
     .then(data => {
@@ -327,7 +328,7 @@ export default function App() {
           token: data.token || localStorage.getItem('admin_token') || localStorage.getItem('moderator_token_' + activeSessionCode) 
         });
       } else {
-        alert('Hatalı Şifre!');
+        alert(lang === 'tr' ? 'Hatalı Kullanıcı Adı veya Şifre!' : 'Invalid Username or Password!');
       }
     })
     .catch(() => alert('Sunucu bağlantı hatası'));
@@ -598,6 +599,19 @@ export default function App() {
 
             <form onSubmit={handleAdminLoginSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div className="form-group">
+                <label className="form-label">{lang === 'tr' ? 'Kullanıcı Adı' : 'Username'}</label>
+                <input 
+                  type="text" 
+                  className="form-input" 
+                  placeholder={lang === 'tr' ? 'Kullanıcı adınızı girin' : 'Enter your username'} 
+                  value={adminUsername}
+                  onChange={(e) => setAdminUsername(e.target.value)}
+                  autoFocus
+                  required
+                />
+              </div>
+
+              <div className="form-group">
                 <label className="form-label">{t('adminModalPassLabel', lang)}</label>
                 <input 
                   type="password" 
@@ -605,7 +619,6 @@ export default function App() {
                   placeholder={t('adminModalPassPlaceholder', lang)} 
                   value={adminPassword}
                   onChange={(e) => setAdminPassword(e.target.value)}
-                  autoFocus
                   required
                 />
               </div>

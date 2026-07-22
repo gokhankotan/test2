@@ -5,20 +5,22 @@ const prisma = new PrismaClient();
 
 async function main() {
   const email = 'admin@muzakere.local';
+  const username = 'admin';
   const password = 'admin123';
   const saltRounds = 12; // cost factor 12
   const passwordHash = await bcrypt.hash(password, saltRounds);
 
   const admin = await prisma.admin.upsert({
     where: { email },
-    update: { passwordHash },
+    update: { passwordHash, username },
     create: {
       email,
+      username,
       passwordHash,
     },
   });
 
-  console.log(`Seed completed. Default admin account upserted: ${admin.email}`);
+  console.log(`Seed completed. Default admin account upserted: ${admin.email} (username: ${admin.username})`);
 }
 
 main()

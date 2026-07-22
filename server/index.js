@@ -36,28 +36,31 @@ app.use(express.json());
 
 // API: Giriş ve Rapor Çıktısı
 
-// 1. Admin Girişi
 app.post('/api/admin/login', async (req, res) => {
-  const { email, password } = req.body;
-  const adminEmail = email || 'admin@muzakere.local';
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ success: false, message: 'Kullanıcı adı ve şifre gereklidir.' });
+  }
 
   try {
     await db.initialized; // Veritabanı/admin başlatılmasının tamamlanmasını bekle
 
-    const admin = await db.findAdminByEmail(adminEmail);
+    const admin = await db.findAdminByUsername(username);
 
     if (!admin) {
-      return res.status(401).json({ success: false, message: 'Geçersiz e-posta veya şifre.' });
+      return res.status(401).json({ success: false, message: 'Geçersiz kullanıcı adı veya şifre.' });
     }
 
     const isMatch = await bcrypt.compare(password, admin.passwordHash);
     if (!isMatch) {
-      return res.status(401).json({ success: false, message: 'Geçersiz e-posta veya şifre.' });
+      return res.status(401).json({ success: false, message: 'Geçersiz kullanıcı adı veya şifre.' });
     }
 
     const token = jwt.sign({ 
       type: 'admin', 
       email: admin.email, 
+      username: admin.username,
       id: admin.id || 'offline-admin-id' 
     }, JWT_SECRET, { expiresIn: '24h' });
 
@@ -118,26 +121,24 @@ app.get('/api/admin/sessions-overview', authenticateAdmin, async (req, res) => {
 
 // 2. Admin Oturum Oluşturma
 app.post('/api/sessions', authenticateAdmin, async (req, res) => {
-  const { title, description, question, visibility, password } = req.body;
+  const { title, description, question } = req.body;
   const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+  const sessionPassword = 'PASS-' + Math.random().toString(36).substring(2, 8).toUpperCase();
 
   try {
-    let passwordHash = null;
-    if (visibility === 'PASSWORD_PROTECTED' && password) {
-      passwordHash = await bcrypt.hash(password, 12);
-    }
+    const passwordHash = await bcrypt.hash(sessionPassword, 12);
 
     const session = db.createSessionSync({
       code,
       title,
       description,
       question,
-      visibility,
+      visibility: 'PASSWORD_PROTECTED',
       passwordHash,
       creatorId: req.admin.id
     });
 
-    res.status(201).json({ success: true, code: session.code, session });
+    res.status(201).json({ success: true, code: session.code, password: sessionPassword, session });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -145,14 +146,12 @@ app.post('/api/sessions', authenticateAdmin, async (req, res) => {
 
 // 3. Herkese Açık / Şifreli Oturum Oluşturma & Yerleşik Moderatörlük
 app.post('/api/sessions/create', async (req, res) => {
-  const { title, description, question, visibility, password, nickname } = req.body;
+  const { title, description, question, nickname } = req.body;
   const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+  const sessionPassword = 'PASS-' + Math.random().toString(36).substring(2, 8).toUpperCase();
 
   try {
-    let passwordHash = null;
-    if (visibility === 'PASSWORD_PROTECTED' && password) {
-      passwordHash = await bcrypt.hash(password, 12);
-    }
+    const passwordHash = await bcrypt.hash(sessionPassword, 12);
 
     // Oturumu oluştur
     const session = db.createSessionSync({
@@ -160,7 +159,7 @@ app.post('/api/sessions/create', async (req, res) => {
       title,
       description,
       question,
-      visibility,
+      visibility: 'PASSWORD_PROTECTED',
       passwordHash,
       creatorId: null
     });
@@ -180,6 +179,7 @@ app.post('/api/sessions/create', async (req, res) => {
     res.status(201).json({
       success: true,
       code,
+      password: sessionPassword,
       moderatorToken,
       participant,
       session

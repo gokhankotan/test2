@@ -16,8 +16,8 @@ describe('Yetkilendirme Matrisi (Authorization Matrix) Testleri', () => {
     await db.initialized;
     
     // Test verilerini hazırla
-    admin1 = { id: 'admin-1-id', email: 'admin1@muzakere.local' };
-    admin2 = { id: 'admin-2-id', email: 'admin2@muzakere.local' };
+    admin1 = { id: 'admin-1-id', email: 'admin1@muzakere.local', username: 'admin1' };
+    admin2 = { id: 'admin-2-id', email: 'admin2@muzakere.local', username: 'admin2' };
 
     // DB'deki in-memory listeleri temizleyelim/mock edelim
     db.sessions.clear();
@@ -51,8 +51,8 @@ describe('Yetkilendirme Matrisi (Authorization Matrix) Testleri', () => {
     db.sessions.set(sessionPublic.code, sessionPublic);
 
     // JWT token'ları üret
-    admin1Token = jwt.sign({ type: 'admin', email: admin1.email, id: admin1.id }, JWT_SECRET);
-    admin2Token = jwt.sign({ type: 'admin', email: admin2.email, id: admin2.id }, JWT_SECRET);
+    admin1Token = jwt.sign({ type: 'admin', email: admin1.email, username: admin1.username, id: admin1.id }, JWT_SECRET);
+    admin2Token = jwt.sign({ type: 'admin', email: admin2.email, username: admin2.username, id: admin2.id }, JWT_SECRET);
 
     modAdmin1Token = jwt.sign({ type: 'moderator', sessionCode: sessionAdmin1.code }, JWT_SECRET);
     modPublicToken = jwt.sign({ type: 'moderator', sessionCode: sessionPublic.code }, JWT_SECRET);
@@ -222,14 +222,14 @@ describe('Yetkilendirme Matrisi (Authorization Matrix) Testleri', () => {
 
       const opinionPending = {
         id: 'op-pending-id',
-        authorId: participantId,
-        content: 'Bu bir bekleyen görüş.',
+        author: participant.nickname,
+        text: 'Bu bir bekleyen görüş.',
         status: 'PENDING'
       };
       const opinionApproved = {
         id: 'op-approved-id',
-        authorId: participantId,
-        content: 'Bu bir onaylı görüş.',
+        author: participant.nickname,
+        text: 'Bu bir onaylı görüş.',
         status: 'APPROVED'
       };
 

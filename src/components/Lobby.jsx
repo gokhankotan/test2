@@ -7,6 +7,7 @@ export default function Lobby({ question, onJoin, participantsCount, lang = 'tr'
   const [nickname, setNickname] = useState('');
   const [justification, setJustification] = useState('');
   const [sessionCode, setSessionCode] = useState('');
+  const [joinVisibility, setJoinVisibility] = useState('PUBLIC');
   const [sessionPassword, setSessionPassword] = useState('');
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -15,8 +16,6 @@ export default function Lobby({ question, onJoin, participantsCount, lang = 'tr'
   const [newTitle, setNewTitle] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [newQuestion, setNewQuestion] = useState('');
-  const [newVisibility, setNewVisibility] = useState('PUBLIC');
-  const [newPassword, setNewPassword] = useState('');
   const [creatorNickname, setCreatorNickname] = useState('');
 
   // Giriş Yapma İşlemi
@@ -24,7 +23,7 @@ export default function Lobby({ question, onJoin, participantsCount, lang = 'tr'
     e.preventDefault();
     if (!nickname.trim()) return setError(lang === 'tr' ? 'Lütfen bir rumuz girin.' : 'Please enter a nickname.');
     if (!sessionCode.trim()) return setError(lang === 'tr' ? 'Lütfen oturum kodunu girin.' : 'Please enter a table code.');
-    if (justification.trim().length < 15) {
+    if (justification.trim().length > 0 && justification.trim().length < 15) {
       return setError(t('lobbyValidationMinJustify', lang));
     }
 
@@ -36,7 +35,7 @@ export default function Lobby({ question, onJoin, participantsCount, lang = 'tr'
       const res = await fetch(`/api/sessions/${upperCode}/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: sessionPassword })
+        body: JSON.stringify({ password: joinVisibility === 'PASSWORD_PROTECTED' ? sessionPassword : '' })
       });
       const data = await res.json();
 
@@ -70,9 +69,6 @@ export default function Lobby({ question, onJoin, participantsCount, lang = 'tr'
     if (!newTitle.trim()) return setError(lang === 'tr' ? 'Masa başlığı gereklidir.' : 'Table title is required.');
     if (!newQuestion.trim()) return setError(lang === 'tr' ? 'Müzakere sorusu gereklidir.' : 'Core question is required.');
     if (!creatorNickname.trim()) return setError(lang === 'tr' ? 'Moderatör rumuzu gereklidir.' : 'Moderator nickname is required.');
-    if (newVisibility === 'PASSWORD_PROTECTED' && !newPassword) {
-      return setError(lang === 'tr' ? 'Şifreli oturumlar için şifre belirlemelisiniz.' : 'You must set a password for protected tables.');
-    }
 
     setError('');
     try {
@@ -83,8 +79,6 @@ export default function Lobby({ question, onJoin, participantsCount, lang = 'tr'
           title: newTitle.trim(),
           description: newDesc.trim(),
           question: newQuestion.trim(),
-          visibility: newVisibility,
-          password: newPassword,
           nickname: creatorNickname.trim()
         })
       });
@@ -101,7 +95,7 @@ export default function Lobby({ question, onJoin, participantsCount, lang = 'tr'
         localStorage.setItem(`session_token_${data.code}`, data.token);
       }
 
-      setSuccessMsg(lang === 'tr' ? `Masa '${data.code}' başarıyla oluşturuldu! Yönlendiriliyorsunuz...` : `Table '${data.code}' created successfully! Redirecting...`);
+      setSuccessMsg(lang === 'tr' ? `Masa '${data.code}' başarıyla oluşturuldu! Şifre: ${data.password}. Yönlendiriliyorsunuz...` : `Table '${data.code}' created successfully! Password: ${data.password}. Redirecting...`);
       
       setTimeout(() => {
         onJoin({
@@ -246,6 +240,19 @@ export default function Lobby({ question, onJoin, participantsCount, lang = 'tr'
             </div>
 
             <div className="form-group">
+              <label className="form-label">{lang === 'tr' ? 'Masa Türü' : 'Table Type'}</label>
+              <select 
+                className="form-input" 
+                value={joinVisibility}
+                onChange={(e) => setJoinVisibility(e.target.value)}
+                style={{ background: '#110c22', color: '#fff' }}
+              >
+                <option value="PUBLIC">{lang === 'tr' ? 'Herkese Açık (Şifresiz)' : 'Public (No Password)'}</option>
+                <option value="PASSWORD_PROTECTED">{lang === 'tr' ? 'Şifreli (Parolalı)' : 'Private (Password Protected)'}</option>
+              </select>
+            </div>
+
+            <div className="form-group">
               <label className="form-label">
                 <User size={14} style={{ marginRight: '0.25rem', verticalAlign: 'middle' }} />
                 {t('lobbyFormNick', lang)}
@@ -264,7 +271,7 @@ export default function Lobby({ question, onJoin, participantsCount, lang = 'tr'
             <div className="form-group">
               <label className="form-label">
                 <MessageSquareCode size={14} style={{ marginRight: '0.25rem', verticalAlign: 'middle' }} />
-                {t('lobbyFormJustify', lang)}
+                {t('lobbyFormJustify', lang)} {lang === 'tr' ? '(İsteğe Bağlı)' : '(Optional)'}
               </label>
               <textarea 
                 className="form-textarea" 
@@ -273,26 +280,30 @@ export default function Lobby({ question, onJoin, participantsCount, lang = 'tr'
                 onChange={(e) => setJustification(e.target.value)}
                 rows={3}
                 maxLength={200}
-                required
               ></textarea>
-              <span style={{ fontSize: '0.75rem', color: justification.length >= 15 ? 'var(--color-agree)' : 'var(--color-warning)', alignSelf: 'flex-end' }}>
-                {justification.length} / 200 {lang === 'tr' ? 'karakter (en az 15)' : 'characters (min 15)'}
-              </span>
+              {justification.length > 0 && (
+                <span style={{ fontSize: '0.75rem', color: justification.length >= 15 ? 'var(--color-agree)' : 'var(--color-warning)', alignSelf: 'flex-end' }}>
+                  {justification.length} / 200 {lang === 'tr' ? 'karakter (en az 15)' : 'characters (min 15)'}
+                </span>
+              )}
             </div>
 
-            <div className="form-group">
-              <label className="form-label">
-                <Lock size={14} style={{ marginRight: '0.25rem', verticalAlign: 'middle' }} />
-                {t('lobbyFormPass', lang)}
-              </label>
-              <input 
-                type="password" 
-                className="form-input" 
-                placeholder={t('lobbyFormPassPlaceholder', lang)} 
-                value={sessionPassword}
-                onChange={(e) => setSessionPassword(e.target.value)}
-              />
-            </div>
+            {joinVisibility === 'PASSWORD_PROTECTED' && (
+              <div className="form-group">
+                <label className="form-label">
+                  <Lock size={14} style={{ marginRight: '0.25rem', verticalAlign: 'middle' }} />
+                  {t('lobbyFormPass', lang)}
+                </label>
+                <input 
+                  type="password" 
+                  className="form-input" 
+                  placeholder={t('lobbyFormPassPlaceholder', lang)} 
+                  value={sessionPassword}
+                  onChange={(e) => setSessionPassword(e.target.value)}
+                  required
+                />
+              </div>
+            )}
 
             <button type="submit" className="btn" style={{ width: '100%', marginTop: '1rem' }}>
               {t('lobbyBtnJoin', lang)}
@@ -341,32 +352,7 @@ export default function Lobby({ question, onJoin, participantsCount, lang = 'tr'
               ></textarea>
             </div>
 
-            <div className="form-group">
-              <label className="form-label">{t('lobbyFormVisibility', lang)}</label>
-              <select 
-                className="form-input" 
-                value={newVisibility}
-                onChange={(e) => setNewVisibility(e.target.value)}
-                style={{ background: '#110c22', color: '#fff' }}
-              >
-                <option value="PUBLIC">{t('lobbyVisibilityPublic', lang)}</option>
-                <option value="PASSWORD_PROTECTED">{t('lobbyVisibilityPrivate', lang)}</option>
-              </select>
-            </div>
 
-            {newVisibility === 'PASSWORD_PROTECTED' && (
-              <div className="form-group">
-                <label className="form-label">{t('lobbyFormPass', lang)}</label>
-                <input 
-                  type="password" 
-                  className="form-input" 
-                  placeholder={t('lobbyFormPassPlaceholder', lang)} 
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  required
-                />
-              </div>
-            )}
 
             <div className="form-group">
               <label className="form-label">

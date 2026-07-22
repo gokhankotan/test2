@@ -49,19 +49,21 @@ class Database {
    */
   async createMasterAdminInMemory() {
     const email = 'admin@muzakere.local';
+    const username = 'admin';
     const password = 'admin123';
     const passwordHash = await bcrypt.hash(password, 12);
 
     const admin = {
       id: 'master-admin-001',
       email,
+      username,
       passwordHash,
       createdAt: new Date(),
       updatedAt: new Date()
     };
 
     this.admins.set(email, admin);
-    console.log(`✅ Master admin oluşturuldu: ${email} (şifre: admin123)`);
+    console.log(`✅ Master admin oluşturuldu: ${email} (username: admin, şifre: admin123)`);
     return admin;
   }
 
@@ -71,6 +73,7 @@ class Database {
    */
   async ensureMasterAdmin() {
     const email = 'admin@muzakere.local';
+    const username = 'admin';
     const password = 'admin123';
 
     try {
@@ -79,7 +82,7 @@ class Database {
       if (!admin) {
         const passwordHash = await bcrypt.hash(password, 12);
         admin = await this.prisma.admin.create({
-          data: { email, passwordHash }
+          data: { email, username, passwordHash }
         });
         console.log(`✅ Veritabanında master admin oluşturuldu: ${email}`);
       } else {
@@ -98,13 +101,14 @@ class Database {
   /**
    * Yeni admin kullanıcısı oluşturur (hem bellek hem veritabanı).
    */
-  async createAdmin(email, password) {
+  async createAdmin(email, username, password) {
     const passwordHash = await bcrypt.hash(password, 12);
     const id = `admin-${Math.random().toString(36).substring(2, 9)}`;
 
     const admin = {
       id,
       email,
+      username,
       passwordHash,
       createdAt: new Date(),
       updatedAt: new Date()
@@ -118,8 +122,8 @@ class Database {
       try {
         const dbAdmin = await this.prisma.admin.upsert({
           where: { email },
-          update: { passwordHash },
-          create: { email, passwordHash }
+          update: { passwordHash, username },
+          create: { email, username, passwordHash }
         });
         admin.id = dbAdmin.id;
         this.admins.set(email, admin);
@@ -151,6 +155,31 @@ class Database {
         }
       } catch (err) {
         console.error('Admin DB arama hatası:', err.message);
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Kullanıcı adına göre admin arar (önce bellek, sonra veritabanı).
+   */
+  async findAdminByUsername(username) {
+    for (const admin of this.admins.values()) {
+      if (admin.username === username) {
+        return admin;
+      }
+    }
+
+    if (this.isPrismaActive) {
+      try {
+        const admin = await this.prisma.admin.findUnique({ where: { username } });
+        if (admin) {
+          this.admins.set(admin.email, admin);
+          return admin;
+        }
+      } catch (err) {
+        console.error('Admin DB arama hatası (username):', err.message);
       }
     }
 
@@ -842,7 +871,7 @@ class Database {
     participant.votes = {};
 
     // 3. Katılımcının PENDING durumdaki görüşlerini sil
-    session.moderationQueue = session.moderationQueue.filter(o => o.authorId !== participantId);
+    session.moderationQueue = session.moderationQueue.filter(o => o.author !== participant.nickname);
 
     // 4. Prisma/PostgreSQL güncellemeleri
     if (this.isPrismaActive) {
@@ -856,7 +885,7 @@ class Database {
 
       // PENDING görüşleri sil
       this.prisma.opinion.deleteMany({
-        where: { authorId: participantId, status: 'PENDING' }
+        where: { author: participant.nickname, sessionId: session.id, status: 'PENDING' }
       }).catch(err => {
         console.error('Pending opinions DB silme hatası:', err.message);
       });
