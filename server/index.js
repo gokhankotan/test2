@@ -96,7 +96,7 @@ app.get('/api/admin/sessions-overview', authenticateAdmin, async (req, res) => {
         return {
           code: session.code,
           question: session.question,
-          participantsCount: session.participants.length,
+          participantsCount: session.participants.filter(p => !p.isBanned).length,
           statementsCount: session.opinions.length,
           polarisability
         };
@@ -405,11 +405,11 @@ app.get('/api/sessions/:code/report', async (req, res) => {
       description: session.description,
       question: session.question,
       createdAt: session.createdAt,
-      participantsCount: session.participants.length,
+      participantsCount: session.participants.filter(p => !p.isBanned).length,
       statementsCount: session.statements.length,
       statements: session.statements,
       analysis: session.analysis,
-      participants: session.participants.map(p => ({
+      participants: session.participants.filter(p => !p.isBanned).map(p => ({
         nickname: p.nickname,
         justification: p.justification,
         votesCount: Object.keys(p.votes).length,
@@ -844,7 +844,7 @@ io.on('connection', (socket) => {
     status: defaultSession.status,
     statements: defaultSession.statements,
     analysis: defaultSession.analysis,
-    participantsCount: defaultSession.participants.length
+    participantsCount: defaultSession.participants.filter(p => !p.isBanned).length
   });
 
   // Odaya Katılma
@@ -862,7 +862,9 @@ io.on('connection', (socket) => {
       status: session.status,
       statements: session.statements,
       analysis: session.analysis,
-      participantsCount: session.participants.length
+      participantsCount: session.participants.filter(p => !p.isBanned).length,
+      visibility: session.visibility,
+      passwordText: session.passwordText
     });
 
     if (callback) callback({ success: true });
@@ -886,7 +888,7 @@ io.on('connection', (socket) => {
     const session = db.getSessionSync(code);
     if (session) {
       socket.emit('moderation-queue', session.moderationQueue);
-      socket.emit('participants-list', session.participants.map(p => ({ id: p.id, nickname: p.nickname, justification: p.justification, isBot: p.isBot })));
+      socket.emit('participants-list', session.participants.filter(p => !p.isBanned).map(p => ({ id: p.id, nickname: p.nickname, justification: p.justification, isBot: p.isBot })));
       sendAiAccuracy(code, socket);
     }
   });
@@ -906,9 +908,9 @@ io.on('connection', (socket) => {
         nickname: participant.nickname,
         justification: participant.justification
       });
-      io.to(`moderator-${code}`).emit('participants-list', session.participants.map(p => ({ id: p.id, nickname: p.nickname, justification: p.justification, isBot: p.isBot })));
+      io.to(`moderator-${code}`).emit('participants-list', session.participants.filter(p => !p.isBanned).map(p => ({ id: p.id, nickname: p.nickname, justification: p.justification, isBot: p.isBot })));
 
-      io.to(`session-${code}`).emit('stats-update', { participantsCount: session.participants.length });
+      io.to(`session-${code}`).emit('stats-update', { participantsCount: session.participants.filter(p => !p.isBanned).length });
 
       runAndBroadcastAnalysis(code);
     } catch (err) {
@@ -1019,7 +1021,7 @@ io.on('connection', (socket) => {
 
       callback({ success: true, message: `${count} adet simüle katılımcı başarıyla oy verdi.` });
       
-      io.to(`session-${code}`).emit('stats-update', { participantsCount: session.participants.length });
+      io.to(`session-${code}`).emit('stats-update', { participantsCount: session.participants.filter(p => !p.isBanned).length });
       performAnalysis(code); // Debounce beklemeden doğrudan çalıştır
     } catch (err) {
       callback({ success: false, message: `Simülasyon hatası: ${err.message}` });
@@ -1039,7 +1041,7 @@ io.on('connection', (socket) => {
         status: session.status,
         statements: session.statements,
         analysis: session.analysis,
-        participantsCount: session.participants.length
+        participantsCount: session.participants.filter(p => !p.isBanned).length
       });
 
       io.to(`moderator-${code}`).emit('moderation-queue', session.moderationQueue);
@@ -1073,9 +1075,9 @@ io.on('connection', (socket) => {
       io.to(`session-${code}`).emit('participant-kicked', { participantId });
       io.to(`session-${code}`).emit('participant-left', { participantId });
       io.to(`moderator-${code}`).emit('participant-left', { participantId });
-      io.to(`moderator-${code}`).emit('participants-list', session.participants.map(p => ({ id: p.id, nickname: p.nickname, justification: p.justification, isBot: p.isBot })));
+      io.to(`moderator-${code}`).emit('participants-list', session.participants.filter(p => !p.isBanned).map(p => ({ id: p.id, nickname: p.nickname, justification: p.justification, isBot: p.isBot })));
       
-      io.to(`session-${code}`).emit('stats-update', { participantsCount: session.participants.length });
+      io.to(`session-${code}`).emit('stats-update', { participantsCount: session.participants.filter(p => !p.isBanned).length });
       
       // Analiz motorunu tetikle (oylar çıkarıldığı için koordinatlar güncellenecektir)
       runAndBroadcastAnalysis(code);

@@ -246,4 +246,36 @@ describe('Yetkilendirme Matrisi (Authorization Matrix) Testleri', () => {
       expect(hasApproved).toBe(true);
     });
   });
+
+  describe('Katılımcı Yönetimi (Rumuz Benzersizliği ve Kick Filtreleme)', () => {
+    it('Aynı rumuzla ikinci bir aktif katılımcı eklenmeye çalışıldığında hata fırlatmalıdır', () => {
+      const session = db.getSessionSync('ADM1S');
+      session.participants = [];
+      
+      // İlk katılımcıyı ekle
+      db.addParticipant('ADM1S', 'BenzersizRumuz', 'Gerekçe');
+      
+      // Aynı rumuzla ikinci kez eklemeyi dene -> Hata fırlatmalı
+      expect(() => {
+        db.addParticipant('ADM1S', 'BenzersizRumuz', 'Gerekçe2');
+      }).toThrow('Bu rumuz zaten kullanılıyor.');
+    });
+
+    it('Kicked/Banned olan bir katılımcının rumuzuyla tekrar katılım sağlanmaya çalışıldığında engellenme hatası vermelidir', () => {
+      const session = db.getSessionSync('ADM1S');
+      session.participants = [];
+      
+      // Katılımcıyı ekle
+      const p = db.addParticipant('ADM1S', 'YenidenKatilimci', 'Gerekçe');
+      
+      // Katılımcıyı kickle
+      db.kickParticipant('ADM1S', p.id);
+      expect(p.isBanned).toBe(true);
+
+      // Aynı rumuzla tekrar katılmayı dene -> Engellenme hatası vermeli
+      expect(() => {
+        db.addParticipant('ADM1S', 'YenidenKatilimci', 'Yeni Gerekçe');
+      }).toThrow('Bu kullanıcı bu oturumdan engellenmiştir.');
+    });
+  });
 });

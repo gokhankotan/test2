@@ -431,8 +431,12 @@ class Database {
 
     const normNickname = (nickname || '').trim();
     const existing = session.participants.find(p => p.nickname.toLowerCase() === normNickname.toLowerCase());
-    if (existing && existing.isBanned) {
-      throw new Error('Bu kullanıcı bu oturumdan engellenmiştir.');
+    if (existing) {
+      if (existing.isBanned) {
+        throw new Error('Bu kullanıcı bu oturumdan engellenmiştir.');
+      } else {
+        throw new Error('Bu rumuz zaten kullanılıyor.');
+      }
     }
 
     const id = `p-${Math.random().toString(36).substring(2, 9)}`;
@@ -832,7 +836,7 @@ class Database {
     }
 
     // Katılımcıları satır satır ekle
-    session.participants.forEach(p => {
+    session.participants.filter(p => !p.isBanned).forEach(p => {
       const ptInfo = pointsMap.get(p.id) || { campId: 0, x: 0, y: 0 };
       
       const rowData = [
