@@ -161,6 +161,10 @@ app.post('/api/sessions/:code/join', passwordRateLimiter, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Bu masa şifrelidir. Şifre girmelisiniz.' });
     }
 
+    if (!session.passwordHash) {
+      return res.status(500).json({ success: false, message: 'Bu oturumun şifre yapılandırması hatalı (şifre ayarlanmamış).' });
+    }
+
     const isMatch = await bcrypt.compare(password, session.passwordHash);
     if (!isMatch) {
       return res.status(401).json({ success: false, message: 'Hatalı şifre.' });

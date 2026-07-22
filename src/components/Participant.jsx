@@ -14,7 +14,8 @@ export default function Participant({
   sessionCode,
   moderationQueue,
   onApproveStatement,
-  onRejectStatement
+  onRejectStatement,
+  lang = 'tr'
 }) {
   const [newOpinion, setNewOpinion] = useState('');
   const [submitStatus, setSubmitStatus] = useState('');

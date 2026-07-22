@@ -326,8 +326,8 @@ async function main() {
           data: {
             id: statement.id,
             sessionId: session.id,
-            authorId: authorDbId,
-            content: statement.text,
+            author: authorNick,
+            text: statement.text,
             status: 'APPROVED'
           }
         }).catch(() => {});

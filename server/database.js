@@ -349,7 +349,7 @@ class Database {
 
     defaultStatements.forEach(s => {
       const statement = {
-        id: `s-${this.nextStatementId++}`,
+        id: `s-${Math.random().toString(36).substring(2, 9)}`,
         text: s.text,
         author: s.author,
         timestamp: new Date(),

@@ -240,7 +240,7 @@ export default function Lobby({ question, onJoin, participantsCount, lang = 'tr'
                 placeholder="Örn: XY12AB" 
                 value={sessionCode}
                 onChange={(e) => setSessionCode(e.target.value.toUpperCase())}
-                maxLength={8}
+                maxLength={10}
                 required
               />
             </div>
