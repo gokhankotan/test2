@@ -399,12 +399,16 @@ async function main() {
   }
 
   // Yeni Oturumu Oluştur (visibility: PASSWORD_PROTECTED)
+  const sessionPassword = 'PASS-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+  const passwordHash = await bcrypt.hash(sessionPassword, 12);
+
   const session = db.createSessionSync({
     code: sessionCode,
     title: title,
     description: description,
     question: question,
     visibility: 'PASSWORD_PROTECTED',
+    passwordHash: passwordHash,
     creatorId: adminId,
     skipDefaultStatements: true
   });
@@ -513,6 +517,7 @@ async function main() {
 
   console.log(`\n✅ İçe Aktarım Başarıyla Tamamlandı:`);
   console.log(`   Oturum Kodu: ${session.code}`);
+  console.log(`   Oturum Şifresi: ${sessionPassword}`);
   console.log(`   Katılımcı Kaydı: ${session.participants.length}`);
   console.log(`   Görüş Kaydı: ${session.statements.length}`);
   console.log(`   İşlenen Oy Sayısı: ${voteCount}`);
