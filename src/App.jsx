@@ -17,7 +17,8 @@ export default function App() {
     statements: [],
     analysis: null,
     participantsCount: 0,
-    targetK: 3
+    targetK: 3,
+    aiAccuracy: 0
   });
 
   const [participant, setParticipant] = useState(null);
@@ -47,6 +48,13 @@ export default function App() {
         statements: state.statements,
         analysis: state.analysis,
         participantsCount: state.participantsCount
+      }));
+    });
+
+    socket.on('ai-moderation-accuracy', (accuracy) => {
+      setSessionState(prev => ({
+        ...prev,
+        aiAccuracy: accuracy
       }));
     });
 
@@ -503,6 +511,7 @@ export default function App() {
               statementsCount: sessionState.statements.length
             }}
             status={sessionState.status}
+            aiAccuracy={sessionState.aiAccuracy}
             onUpdateSessionStatus={handleUpdateSessionStatus}
             onUpdateQuestion={handleUpdateQuestion}
             onApproveStatement={handleAdminApproveStatement}

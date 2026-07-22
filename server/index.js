@@ -311,6 +311,9 @@ app.patch('/api/sessions/:code/opinions/:id/status', checkModerator, async (req,
     // Canlı oylama güncellemesi için yayın
     io.to(`session-${upperCode}`).emit('opinion_moderated', { id, status, statement });
 
+    // AI Moderasyon doğruluğunu güncelle
+    sendAiAccuracyToRoom(upperCode);
+
     res.json({ success: true, statement });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -716,6 +719,34 @@ async function performAnalysis(sessionCode) {
   io.to(`session-${sessionCode}`).emit('analysis-update', analysis);
 }
 
+async function sendAiAccuracy(sessionCode, targetSocketOrIo) {
+  if (!db.isPrismaActive) {
+    targetSocketOrIo.emit('ai-moderation-accuracy', 0);
+    return;
+  }
+  try {
+    const session = db.getSessionSync(sessionCode);
+    if (!session) return;
+
+    const flaggedApproved = await db.prisma.opinion.count({
+      where: { sessionId: session.id, aiWarningFlag: true, status: 'APPROVED' }
+    });
+    const flaggedRejected = await db.prisma.opinion.count({
+      where: { sessionId: session.id, aiWarningFlag: true, status: 'REJECTED' }
+    });
+    const totalDecided = flaggedApproved + flaggedRejected;
+    const accuracy = totalDecided === 0 ? 0 : Math.round((flaggedRejected / totalDecided) * 100);
+
+    targetSocketOrIo.emit('ai-moderation-accuracy', accuracy);
+  } catch (err) {
+    console.error('AI Moderation Accuracy count error:', err.message);
+  }
+}
+
+const sendAiAccuracyToRoom = (code) => {
+  sendAiAccuracy(code, io.to(`moderator-${code}`));
+};
+
 // Socket.io Bağlantı Kontrolleri
 io.on('connection', (socket) => {
   console.log(`Yeni bağlantı: ${socket.id}`);
@@ -781,6 +812,7 @@ io.on('connection', (socket) => {
     if (session) {
       socket.emit('moderation-queue', session.moderationQueue);
       socket.emit('participants-list', session.participants.map(p => ({ id: p.id, nickname: p.nickname, justification: p.justification, isBot: p.isBot })));
+      sendAiAccuracy(code, socket);
     }
   });
 
@@ -877,6 +909,7 @@ io.on('connection', (socket) => {
       io.to(`moderator-${code}`).emit('moderation-queue', session.moderationQueue);
       io.to(`session-${code}`).emit('new-statement', statement);
       runAndBroadcastAnalysis(code);
+      sendAiAccuracyToRoom(code);
     }
   });
 
@@ -889,6 +922,7 @@ io.on('connection', (socket) => {
     if (statement) {
       const session = db.getSessionSync(code);
       io.to(`moderator-${code}`).emit('moderation-queue', session.moderationQueue);
+      sendAiAccuracyToRoom(code);
     }
   });
 

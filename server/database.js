@@ -200,7 +200,8 @@ class Database {
           author: o.author,
           timestamp: o.timestamp,
           approved: true,
-          aiWarning: o.aiWarning
+          aiWarning: o.aiWarning,
+          aiWarningFlag: o.aiWarningFlag
         }));
 
         const moderationQueue = dbSession.opinions.filter(o => o.status === 'PENDING').map(o => ({
@@ -209,7 +210,8 @@ class Database {
           author: o.author,
           timestamp: o.timestamp,
           approved: false,
-          aiWarning: o.aiWarning
+          aiWarning: o.aiWarning,
+          aiWarningFlag: o.aiWarningFlag
         }));
 
         const participants = dbSession.participants.map(p => {
@@ -476,7 +478,8 @@ class Database {
       timestamp: new Date(),
       approved,
       isBot,
-      aiWarning
+      aiWarning,
+      aiWarningFlag: !!aiWarning
     };
 
     if (approved) {
@@ -494,6 +497,7 @@ class Database {
           status: approved ? 'APPROVED' : 'PENDING',
           isBot: statement.isBot,
           aiWarning: statement.aiWarning,
+          aiWarningFlag: statement.aiWarningFlag,
           sessionId: session.id
         }
       }).catch(err => {

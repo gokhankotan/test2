@@ -62,16 +62,17 @@ model Participant {
 }
 
 model Opinion {
-  id        String        @id @default(uuid())
-  text      String
-  author    String
-  status    OpinionStatus @default(PENDING)
-  isBot     Boolean       @default(false)
-  aiWarning String?
-  sessionId String
-  session   Session       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  votes     Vote[]
-  timestamp DateTime      @default(now())
+  id            String        @id @default(uuid())
+  text          String
+  author        String
+  status        OpinionStatus @default(PENDING)
+  isBot         Boolean       @default(false)
+  aiWarning     String?
+  aiWarningFlag Boolean       @default(false)
+  sessionId     String
+  session       Session       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  votes         Vote[]
+  timestamp     DateTime      @default(now())
 }
 
 model Vote {

@@ -21,7 +21,8 @@ export default function AdminDashboard({
   camps = [],
   onUpdateCampsCount,
   onRenameCamp,
-  lang = 'tr'
+  lang = 'tr',
+  aiAccuracy = 0
 }) {
   const [newQuestion, setNewQuestion] = useState(question);
   const [simCount, setSimCount] = useState(100);
@@ -373,9 +374,28 @@ export default function AdminDashboard({
           <Shield size={18} className="text-secondary" />
           {t('adminQueueTitle', lang)} ({moderationQueue.length})
         </h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
           {t('adminQueueDesc', lang)}
         </p>
+
+        {aiAccuracy !== undefined && (
+          <div style={{
+            marginBottom: '1.25rem',
+            padding: '0.6rem 0.85rem',
+            background: 'rgba(59, 130, 246, 0.15)',
+            border: '1px solid rgba(59, 130, 246, 0.3)',
+            borderRadius: 'var(--radius-md)',
+            fontSize: '0.85rem',
+            color: '#93c5fd',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}>
+            🎯 <strong>{lang === 'tr' 
+              ? `AI Moderasyon Doğruluğu: %${aiAccuracy} doğru alarm` 
+              : `AI Moderation Accuracy: ${aiAccuracy}% true alert`}</strong>
+          </div>
+        )}
 
         <div style={{ maxHeight: '550px', overflowY: 'auto', paddingRight: '0.5rem' }}>
           {moderationQueue.length > 0 ? (

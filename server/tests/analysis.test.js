@@ -372,4 +372,18 @@ describe('Matematik ve Kümeleme Motoru Birim Testleri', () => {
 
     expect(voteCompletionRate).toBe(55.6);
   });
+
+  // 10. AI Moderasyon Doğruluğu Testi
+  it('AI Moderasyon Doğruluğu (doğru alarm) formülünün doğru hesaplanması', () => {
+    const calculateAccuracy = (flaggedApproved, flaggedRejected) => {
+      const totalDecided = flaggedApproved + flaggedRejected;
+      return totalDecided === 0 ? 0 : Math.round((flaggedRejected / totalDecided) * 100);
+    };
+
+    expect(calculateAccuracy(0, 0)).toBe(0);
+    expect(calculateAccuracy(0, 5)).toBe(100);
+    expect(calculateAccuracy(5, 0)).toBe(0);
+    expect(calculateAccuracy(3, 3)).toBe(50);
+    expect(calculateAccuracy(2, 6)).toBe(75);
+  });
 });
