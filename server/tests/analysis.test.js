@@ -316,4 +316,27 @@ describe('Matematik ve Kümeleme Motoru Birim Testleri', () => {
     expect(ptAmbiguous.ambiguous).toBe(true);
     expect(ptClear.ambiguous).toBe(false);
   });
+
+  // 8. Katılım Eşitliği (Gini Katsayısı) Testi
+  it('Gini katsayısı formülünün farklı dağılımlar için doğru çalışması', () => {
+    const calculateGini = (values) => {
+      const n = values.length;
+      if (n === 0) return 0;
+      const sum = values.reduce((acc, val) => acc + val, 0);
+      if (sum === 0) return 0;
+      const sorted = [...values].sort((a, b) => a - b);
+      let tempSum = 0;
+      for (let i = 0; i < n; i++) {
+        tempSum += (i + 1) * sorted[i];
+      }
+      const gini = (2 * tempSum) / (n * sum) - (n + 1) / n;
+      return parseFloat(gini.toFixed(3));
+    };
+
+    expect(calculateGini([2, 2, 2])).toBe(0);
+    expect(calculateGini([0, 0, 10])).toBe(0.667);
+    expect(calculateGini([1, 2, 3])).toBe(0.222);
+    expect(calculateGini([])).toBe(0);
+    expect(calculateGini([0, 0, 0])).toBe(0);
+  });
 });

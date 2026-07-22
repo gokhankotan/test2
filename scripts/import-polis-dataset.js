@@ -216,6 +216,27 @@ async function performAnalysisForScript(sessionCode) {
 
   const finalSubClusters = Object.keys(subClustersMap).length > 0 ? subClustersMap : null;
 
+  // 5c. Katılım Eşitliği (Gini Katsayısı) Hesapla
+  const calculateGini = (values) => {
+    const n = values.length;
+    if (n === 0) return 0;
+    const sum = values.reduce((acc, val) => acc + val, 0);
+    if (sum === 0) return 0;
+    const sorted = [...values].sort((a, b) => a - b);
+    let tempSum = 0;
+    for (let i = 0; i < n; i++) {
+      tempSum += (i + 1) * sorted[i];
+    }
+    const gini = (2 * tempSum) / (n * sum) - (n + 1) / n;
+    return parseFloat(gini.toFixed(3));
+  };
+
+  const nonBotParticipants = activeParticipants.filter(p => !p.isBot);
+  const opinionCounts = nonBotParticipants.map(p => {
+    return statements.filter(st => st.author === p.nickname).length;
+  });
+  const participationGini = calculateGini(opinionCounts);
+
   // Kutuplaşma Derecesini (Polarisability) yeni formülle hesapla
   const polResult = calculatePolarisability(points, camps);
   const polarisability = polResult.polarisability;
@@ -235,6 +256,7 @@ async function performAnalysisForScript(sessionCode) {
     insufficientVariance,
     axisLabels: { x: axisLabelX, y: axisLabelY },
     subClusters: finalSubClusters,
+    participationGini,
     targetK: session.targetK || 3,
     polarizationHistory: session.polarizationHistory || [],
     varianceExplained,

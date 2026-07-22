@@ -138,6 +138,10 @@ export default function ReportView({ onBack, sessionCode, lang = 'tr' }) {
                 <strong>{lang === 'tr' ? 'Net Bir Kampa Dahil Olmayan:' : 'Ambiguous Participants:'}</strong>{' '}
                 {ambiguousCount} {lang === 'tr' ? 'katılımcı' : 'participants'}
               </div>
+              <div>
+                <strong>{lang === 'tr' ? 'Katılım Eşitliği (Gini):' : 'Participation Equality (Gini):'}</strong>{' '}
+                {analysis?.participationGini !== undefined ? analysis.participationGini : '—'}
+              </div>
             </div>
             
             {showVarianceWarning && (
@@ -154,6 +158,23 @@ export default function ReportView({ onBack, sessionCode, lang = 'tr' }) {
                 ⚠️ {lang === 'tr'
                   ? `Bu oran sınırlı bir varyansa (%${Math.round(totalVariance * 100)}) dayanıyor, temkinli yorumlayın.`
                   : `This rate is based on limited variance (%${Math.round(totalVariance * 100)}), interpret with caution.`}
+              </div>
+            )}
+
+            {analysis?.participationGini > 0.6 && (
+              <div style={{
+                fontSize: '0.8rem',
+                color: '#dc2626',
+                background: '#fef2f2',
+                border: '1px solid #fee2e2',
+                padding: '0.4rem 0.85rem',
+                borderRadius: 'var(--radius-sm)',
+                marginTop: '0.25rem',
+                lineHeight: 1.3
+              }}>
+                ⚠️ {lang === 'tr'
+                  ? 'Görüş üretimi az sayıda kişide yoğunlaşmış.'
+                  : 'Opinion production is concentrated in a small number of people.'}
               </div>
             )}
           </div>
