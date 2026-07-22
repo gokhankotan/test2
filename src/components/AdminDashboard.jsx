@@ -22,7 +22,8 @@ export default function AdminDashboard({
   onUpdateCampsCount,
   onRenameCamp,
   lang = 'tr',
-  aiAccuracy = 0
+  aiAccuracy = 0,
+  sessionsOverview = []
 }) {
   const [newQuestion, setNewQuestion] = useState(question);
   const [simCount, setSimCount] = useState(100);
@@ -76,7 +77,8 @@ export default function AdminDashboard({
   };
 
   return (
-    <div className="admin-layout">
+    <div className="admin-container" style={{ display: 'flex', flexDirection: 'column', gap: '2rem', maxWidth: '1200px', margin: '0 auto', padding: '0 1rem 3rem 1rem' }}>
+      <div className="admin-layout">
       {/* Sol Panel: Oturum ve Simülasyon Ayarları */}
       <div className="admin-left-col" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
         
@@ -452,6 +454,53 @@ export default function AdminDashboard({
             </div>
           )}
         </div>
+      </div>
+
+      {/* Meta-Analiz Tablosu */}
+      <div className="glass-panel" style={{ width: '100%' }}>
+        <h2 style={{ fontSize: '1.25rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          📊 {lang === 'tr' ? 'Oturumlar Arası Meta-Analiz' : 'Cross-Session Meta-Analysis'}
+        </h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.25rem' }}>
+          {lang === 'tr' 
+            ? 'Sadece adminler tarafından oluşturulmuş aktif oturumların genel durum özeti.' 
+            : 'Overview of active sessions created by administrators.'}
+        </p>
+        
+        {sessionsOverview.length > 0 ? (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border-light)', color: 'var(--color-primary)' }}>
+                  <th style={{ padding: '0.75rem' }}>{lang === 'tr' ? 'Oturum Kodu' : 'Session Code'}</th>
+                  <th style={{ padding: '0.75rem' }}>{lang === 'tr' ? 'Müzakere Sorusu' : 'Deliberation Question'}</th>
+                  <th style={{ padding: '0.75rem' }}>{lang === 'tr' ? 'Katılımcı Sayısı' : 'Participants'}</th>
+                  <th style={{ padding: '0.75rem' }}>{lang === 'tr' ? 'Görüş Sayısı' : 'Approved Opinions'}</th>
+                  <th style={{ padding: '0.75rem' }}>{lang === 'tr' ? 'Kutuplaşma Derecesi' : 'Polarization Rate'}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sessionsOverview.map(s => (
+                  <tr key={s.code} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                    <td style={{ padding: '0.75rem', fontWeight: 'bold', color: 'var(--color-secondary)' }}>{s.code}</td>
+                    <td style={{ padding: '0.75rem', maxWidth: '400px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.question}>{s.question}</td>
+                    <td style={{ padding: '0.75rem' }}>{s.participantsCount}</td>
+                    <td style={{ padding: '0.75rem' }}>{s.statementsCount}</td>
+                    <td style={{ padding: '0.75rem' }}>
+                      {s.polarisability !== null && s.polarisability !== undefined
+                        ? `%${Math.round(s.polarisability)}`
+                        : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+            {lang === 'tr' ? 'Yükleniyor veya gösterilecek veri yok.' : 'Loading or no data available.'}
+          </p>
+        )}
       </div>
     </div>
   );

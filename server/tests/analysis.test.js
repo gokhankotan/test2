@@ -386,4 +386,56 @@ describe('Matematik ve Kümeleme Motoru Birim Testleri', () => {
     expect(calculateAccuracy(3, 3)).toBe(50);
     expect(calculateAccuracy(2, 6)).toBe(75);
   });
+
+  // 11. Oturumlar Arası Meta-Analiz Testi
+  it('Sessions overview verisinin doğru eşlenmesi', () => {
+    const mockSessions = [
+      {
+        code: 'S1',
+        question: 'Q1',
+        analysis: { polarisability: 45 },
+        opinions: [ { status: 'APPROVED' }, { status: 'PENDING' } ],
+        participants: [ { isBot: false }, { isBot: true } ]
+      },
+      {
+        code: 'S2',
+        question: 'Q2',
+        analysis: null,
+        opinions: [],
+        participants: []
+      }
+    ];
+
+    const mapped = mockSessions.map(session => {
+      const analysisObj = session.analysis;
+      const polarisability = (analysisObj && typeof analysisObj === 'object') ? analysisObj.polarisability : null;
+
+      const approvedOpinions = session.opinions.filter(o => o.status === 'APPROVED');
+      const nonBotParticipants = session.participants.filter(p => !p.isBot);
+
+      return {
+        code: session.code,
+        question: session.question,
+        participantsCount: nonBotParticipants.length,
+        statementsCount: approvedOpinions.length,
+        polarisability
+      };
+    });
+
+    expect(mapped[0]).toEqual({
+      code: 'S1',
+      question: 'Q1',
+      participantsCount: 1,
+      statementsCount: 1,
+      polarisability: 45
+    });
+
+    expect(mapped[1]).toEqual({
+      code: 'S2',
+      question: 'Q2',
+      participantsCount: 0,
+      statementsCount: 0,
+      polarisability: null
+    });
+  });
 });

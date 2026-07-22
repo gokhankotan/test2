@@ -32,7 +32,26 @@ export default function App() {
   const [isConnected, setIsConnected] = useState(true);
   const [participants, setParticipants] = useState([]);
   const offlineVotesQueue = useRef([]);
+  const [sessionsOverview, setSessionsOverview] = useState([]);
   const [lang, setLang] = useState(localStorage.getItem('muzakere_lang') || 'tr');
+
+  useEffect(() => {
+    if (role === 'admin' && isAdminAuthenticated) {
+      const token = localStorage.getItem('admin_token');
+      if (token) {
+        fetch('/api/admin/sessions-overview', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            setSessionsOverview(data.sessions);
+          }
+        })
+        .catch(err => console.error('Meta-analysis load error:', err));
+      }
+    }
+  }, [role, isAdminAuthenticated, activeSessionCode]);
 
   const socketRef = useRef(null);
 
@@ -527,6 +546,7 @@ export default function App() {
             onUpdateCampsCount={handleUpdateCampsCount}
             onRenameCamp={handleRenameCamp}
             lang={lang}
+            sessionsOverview={sessionsOverview}
           />
         )}
 

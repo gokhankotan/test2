@@ -67,6 +67,55 @@ app.post('/api/admin/login', async (req, res) => {
   }
 });
 
+// 1.2 Admin Oturumları Meta-Analiz Endpoint'i
+app.get('/api/admin/sessions-overview', authenticateAdmin, async (req, res) => {
+  try {
+    let overview = [];
+    if (db.isPrismaActive) {
+      const dbSessions = await db.prisma.session.findMany({
+        where: {
+          creatorId: { not: null }
+        },
+        include: {
+          opinions: {
+            where: { status: 'APPROVED' }
+          },
+          participants: {
+            where: { isBot: false }
+          }
+        }
+      });
+
+      overview = dbSessions.map(session => {
+        const analysisObj = session.analysis;
+        const polarisability = (analysisObj && typeof analysisObj === 'object') ? analysisObj.polarisability : null;
+
+        return {
+          code: session.code,
+          question: session.question,
+          participantsCount: session.participants.length,
+          statementsCount: session.opinions.length,
+          polarisability
+        };
+      });
+    } else {
+      overview = Array.from(db.sessions.values())
+        .filter(s => s.creatorId !== null && s.creatorId !== undefined)
+        .map(s => ({
+          code: s.code,
+          question: s.question,
+          participantsCount: s.participants.filter(p => !p.isBot).length,
+          statementsCount: s.statements.length,
+          polarisability: s.analysis ? s.analysis.polarisability : null
+        }));
+    }
+
+    res.json({ success: true, sessions: overview });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // 2. Admin Oturum Oluşturma
 app.post('/api/sessions', authenticateAdmin, async (req, res) => {
   const { title, description, question, visibility, password } = req.body;
