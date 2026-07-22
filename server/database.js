@@ -223,6 +223,16 @@ class Database {
       });
 
       for (const dbSession of dbSessions) {
+        if (dbSession.code === 'DEFAULT' && !dbSession.creatorId) {
+          const firstAdmin = await this.prisma.admin.findFirst();
+          if (firstAdmin) {
+            await this.prisma.session.update({
+              where: { code: 'DEFAULT' },
+              data: { creatorId: firstAdmin.id }
+            });
+            dbSession.creatorId = firstAdmin.id;
+          }
+        }
         const statements = dbSession.opinions.filter(o => o.status === 'APPROVED').map(o => ({
           id: o.id,
           text: o.text,
@@ -299,12 +309,18 @@ class Database {
 
       // Eğer DB boş ise varsayılan oturumu oluştur
       if (this.sessions.size === 0) {
+        let adminId = null;
+        if (this.isPrismaActive) {
+          const admin = await this.prisma.admin.findFirst();
+          if (admin) adminId = admin.id;
+        }
         this.createSessionSync({
           code: 'DEFAULT',
           title: 'Varsayılan Masa',
           description: 'Varsayılan müzakere masası',
           question: 'Şehir içi ulaşımda mikromobiliteyi (bisiklet, e-scooter) artırmak için motorlu araç şeritleri ve otopark alanları daraltılmalı mıdır?',
-          visibility: 'PUBLIC'
+          visibility: 'PUBLIC',
+          creatorId: adminId
         });
       }
     } catch (err) {

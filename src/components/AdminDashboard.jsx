@@ -23,7 +23,9 @@ export default function AdminDashboard({
   onRenameCamp,
   lang = 'tr',
   aiAccuracy = 0,
-  sessionsOverview = []
+  sessionsOverview = [],
+  activeSessionCode = 'DEFAULT',
+  onSelectSession
 }) {
   const [newQuestion, setNewQuestion] = useState(question);
   const [simCount, setSimCount] = useState(100);
@@ -78,6 +80,26 @@ export default function AdminDashboard({
 
   return (
     <div className="admin-container" style={{ display: 'flex', flexDirection: 'column', gap: '2rem', maxWidth: '1200px', margin: '0 auto', padding: '0 1rem 3rem 1rem' }}>
+      
+      {/* Aktif Yönetilen Oturum Bilgilendirmesi */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(88, 28, 135, 0.15)', border: '1px solid rgba(168, 85, 247, 0.3)', padding: '1rem 1.5rem', borderRadius: 'var(--radius-lg)', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <h1 style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
+            <Shield className="text-secondary" size={22} />
+            {lang === 'tr' ? 'Sistem Yönetim Paneli' : 'System Administration Panel'}
+          </h1>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginTop: '0.25rem', marginContent: 0, marginBlock: 0 }}>
+            {lang === 'tr' ? 'Oturumları denetleyin, simülasyonları çalıştırın ve yönetin. Oturumu değiştirmek için aşağıdaki listeden seçin.' : 'Monitor, simulate, and manage sessions. Click on a session code below to switch.'}
+          </p>
+        </div>
+        <div style={{ textAlign: 'right', minWidth: '150px' }}>
+          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', fontWeight: 600 }}>{lang === 'tr' ? 'YÖNETİLEN AKTİF OTURUM' : 'ACTIVELY MANAGED SESSION'}</span>
+          <code style={{ fontSize: '1.2rem', color: '#c084fc', background: 'rgba(0,0,0,0.3)', padding: '0.2rem 0.6rem', borderRadius: '6px', fontWeight: 'bold', display: 'inline-block', marginTop: '0.25rem', border: '1px solid rgba(168, 85, 247, 0.4)' }}>
+            {activeSessionCode}
+          </code>
+        </div>
+      </div>
+
       <div className="admin-layout">
       {/* Sol Panel: Oturum ve Simülasyon Ayarları */}
       <div className="admin-left-col" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -482,8 +504,26 @@ export default function AdminDashboard({
               </thead>
               <tbody>
                 {sessionsOverview.map(s => (
-                  <tr key={s.code} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <td style={{ padding: '0.75rem', fontWeight: 'bold', color: 'var(--color-secondary)' }}>{s.code}</td>
+                  <tr key={s.code} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: activeSessionCode === s.code ? 'rgba(168, 85, 247, 0.05)' : 'transparent' }}>
+                    <td style={{ padding: '0.75rem' }}>
+                      <button 
+                        onClick={() => onSelectSession && onSelectSession(s.code)}
+                        className="btn-link"
+                        style={{ 
+                          background: 'none', 
+                          border: 'none', 
+                          color: activeSessionCode === s.code ? '#c084fc' : 'var(--color-secondary)', 
+                          fontWeight: 'bold', 
+                          cursor: 'pointer', 
+                          textDecoration: 'underline', 
+                          padding: 0,
+                          fontSize: '0.9rem' 
+                        }}
+                        title={lang === 'tr' ? 'Yönetmek için bu oturumu seç' : 'Select this session to manage'}
+                      >
+                        {s.code} {activeSessionCode === s.code ? '⭐️' : ''}
+                      </button>
+                    </td>
                     <td style={{ padding: '0.75rem', maxWidth: '400px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.question}>{s.question}</td>
                     <td style={{ padding: '0.75rem' }}>{s.participantsCount}</td>
                     <td style={{ padding: '0.75rem' }}>{s.statementsCount}</td>

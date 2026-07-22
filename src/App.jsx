@@ -251,6 +251,8 @@ export default function App() {
         }
 
         setRole('participant');
+      } else {
+        alert(res.message || (lang === 'tr' ? 'Giriş başarısız.' : 'Join failed.'));
       }
     });
   };
@@ -377,6 +379,19 @@ export default function App() {
   const handleToggleLang = (selectedLang) => {
     localStorage.setItem('muzakere_lang', selectedLang);
     setLang(selectedLang);
+  };
+
+  const handleSelectSession = (code) => {
+    const upperCode = code.toUpperCase();
+    setActiveSessionCode(upperCode);
+    
+    // Admin odasına yeni kodla katıl
+    socketRef.current.emit('admin-join', { 
+      sessionCode: upperCode, 
+      token: localStorage.getItem('admin_token') || localStorage.getItem('moderator_token_' + upperCode) 
+    });
+    
+    // session-state ve diğer veriler socket üzerinden otomatik güncellenecektir
   };
 
   const handleOpenAdminPanel = () => {
@@ -530,6 +545,8 @@ export default function App() {
 
         {role === 'admin' && isAdminAuthenticated && (
           <AdminDashboard 
+            activeSessionCode={activeSessionCode}
+            onSelectSession={handleSelectSession}
             question={sessionState.question}
             moderationQueue={moderationQueue}
             stats={{
