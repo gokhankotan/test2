@@ -455,6 +455,7 @@ export default function AdminDashboard({
           )}
         </div>
       </div>
+    </div>
 
       {/* Meta-Analiz Tablosu */}
       <div className="glass-panel" style={{ width: '100%' }}>
