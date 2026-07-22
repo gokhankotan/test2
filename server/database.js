@@ -281,6 +281,7 @@ class Database {
           status: dbSession.status,
           visibility: dbSession.visibility,
           passwordHash: dbSession.passwordHash,
+          passwordText: dbSession.passwordText,
           passwordUpdatedAt: dbSession.passwordUpdatedAt,
           statements,
           moderationQueue,
@@ -334,7 +335,7 @@ class Database {
     return this.sessions.get(code) || null;
   }
 
-  createSessionSync({ code, title, description, question, visibility, passwordHash = null, creatorId = null, skipDefaultStatements = false }) {
+  createSessionSync({ code, title, description, question, visibility, passwordHash = null, passwordText = null, creatorId = null, skipDefaultStatements = false }) {
     const sessionCode = code ? code.toUpperCase() : Math.random().toString(36).substring(2, 8).toUpperCase();
     
     const session = {
@@ -346,6 +347,7 @@ class Database {
       status: 'active',
       visibility: visibility || 'PUBLIC',
       passwordHash: passwordHash,
+      passwordText: passwordText,
       passwordUpdatedAt: passwordHash ? new Date() : null,
       statements: [],
       moderationQueue: [],
@@ -402,6 +404,7 @@ class Database {
           question: session.question,
           visibility: session.visibility,
           passwordHash: session.passwordHash,
+          passwordText: session.passwordText,
           passwordUpdatedAt: session.passwordUpdatedAt,
           creatorId: session.creatorId,
           opinions: {
@@ -598,12 +601,13 @@ class Database {
     }
   }
 
-  updateSessionPassword(sessionCode, passwordHash, visibility) {
+  updateSessionPassword(sessionCode, passwordHash, visibility, passwordText = null) {
     const session = this.sessions.get(sessionCode);
     if (!session) return;
 
     session.visibility = visibility;
     session.passwordHash = passwordHash;
+    session.passwordText = passwordText;
     session.passwordUpdatedAt = new Date();
 
     if (this.isPrismaActive) {
@@ -612,6 +616,7 @@ class Database {
         data: {
           visibility,
           passwordHash,
+          passwordText,
           passwordUpdatedAt: session.passwordUpdatedAt
         }
       }).catch(err => {

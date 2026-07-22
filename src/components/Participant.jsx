@@ -15,14 +15,20 @@ export default function Participant({
   moderationQueue,
   onApproveStatement,
   onRejectStatement,
-  lang = 'tr'
+  lang = 'tr',
+  visibility = 'PUBLIC',
+  passwordText = null
 }) {
   const [newOpinion, setNewOpinion] = useState('');
   const [submitStatus, setSubmitStatus] = useState('');
   const [modPanelOpen, setModPanelOpen] = useState(true);
-  const [accessVisibility, setAccessVisibility] = useState('PUBLIC');
+  const [accessVisibility, setAccessVisibility] = useState(visibility);
   const [accessPassword, setAccessPassword] = useState('');
   const [accessMsg, setAccessMsg] = useState('');
+
+  React.useEffect(() => {
+    setAccessVisibility(visibility);
+  }, [visibility]);
   const [accessError, setAccessError] = useState('');
 
   // Henüz oy verilmemiş görüşler
@@ -159,6 +165,12 @@ export default function Participant({
                   <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.75rem', fontWeight: 600 }}>
                     🔒 MASA ERİŞİM AYARLARI
                   </p>
+
+                  {visibility === 'PASSWORD_PROTECTED' && passwordText && (
+                    <div style={{ background: 'rgba(192, 132, 252, 0.1)', border: '1px solid #c084fc', padding: '0.75rem', borderRadius: 'var(--radius-md)', fontSize: '0.85rem', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span><strong>{lang === 'tr' ? 'Aktif Masa Şifresi:' : 'Active Table Password:'}</strong> <code style={{ fontSize: '1rem', color: '#c084fc', background: 'rgba(0,0,0,0.2)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>{passwordText}</code></span>
+                    </div>
+                  )}
 
                   {accessMsg && (
                     <div style={{ background: 'rgba(51,255,87,0.1)', border: '1px solid var(--color-agree)', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-md)', fontSize: '0.8rem', marginBottom: '0.75rem' }}>

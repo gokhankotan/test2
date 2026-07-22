@@ -37,6 +37,7 @@ model Session {
   status            String        @default("active") // active, paused
   visibility        Visibility    @default(PUBLIC)
   passwordHash      String?
+  passwordText      String?
   passwordUpdatedAt DateTime?
   analysis          Json?         // PCA, kümeleme ve köprü cümle çıktılarının JSON olarak saklanacağı alan
   targetK           Int           @default(3)

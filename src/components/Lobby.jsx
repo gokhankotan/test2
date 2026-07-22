@@ -105,7 +105,7 @@ export default function Lobby({ question, onJoin, participantsCount, lang = 'tr'
           isModerator: true,
           token: data.moderatorToken
         });
-      }, 1500);
+      }, 6000);
 
     } catch (err) {
       setError(lang === 'tr' ? 'Masa oluşturulurken bir hata oluştu.' : 'An error occurred while creating the table.');

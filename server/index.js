@@ -135,6 +135,7 @@ app.post('/api/sessions', authenticateAdmin, async (req, res) => {
       question,
       visibility: 'PASSWORD_PROTECTED',
       passwordHash,
+      passwordText: sessionPassword,
       creatorId: req.admin.id
     });
 
@@ -161,6 +162,7 @@ app.post('/api/sessions/create', async (req, res) => {
       question,
       visibility: 'PASSWORD_PROTECTED',
       passwordHash,
+      passwordText: sessionPassword,
       creatorId: null
     });
 
@@ -236,14 +238,17 @@ app.patch('/api/sessions/:code/password', requireSessionOwnership, async (req, r
     const session = req.session;
 
     let newPasswordHash = session.passwordHash;
+    let newPasswordText = session.passwordText;
     if (visibility === 'PASSWORD_PROTECTED' && password) {
       newPasswordHash = await bcrypt.hash(password, 12);
+      newPasswordText = password;
     } else if (visibility === 'PUBLIC') {
       newPasswordHash = null;
+      newPasswordText = null;
     }
 
-    db.updateSessionPassword(upperCode, newPasswordHash, visibility);
-    io.to(`session-${upperCode}`).emit('session-settings-updated', { visibility });
+    db.updateSessionPassword(upperCode, newPasswordHash, visibility, newPasswordText);
+    io.to(`session-${upperCode}`).emit('session-settings-updated', { visibility, passwordText: newPasswordText });
 
     res.json({ success: true, message: 'Oturum erişim ayarları başarıyla güncellendi.' });
   } catch (err) {

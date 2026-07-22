@@ -18,7 +18,9 @@ export default function App() {
     analysis: null,
     participantsCount: 0,
     targetK: 3,
-    aiAccuracy: 0
+    aiAccuracy: 0,
+    visibility: 'PUBLIC',
+    passwordText: null
   });
 
   const [participant, setParticipant] = useState(null);
@@ -67,7 +69,9 @@ export default function App() {
         status: state.status,
         statements: state.statements,
         analysis: state.analysis,
-        participantsCount: state.participantsCount
+        participantsCount: state.participantsCount,
+        visibility: state.visibility || 'PUBLIC',
+        passwordText: state.passwordText || null
       }));
     });
 
@@ -133,9 +137,9 @@ export default function App() {
       setRole('lobby');
     });
 
-    socket.on('session-settings-updated', ({ visibility }) => {
-      // Görünürlük güncellemesi geldiyse kullanıcıya bildir
-      console.log('Masa erişim ayarları güncellendi:', visibility);
+    socket.on('session-settings-updated', ({ visibility, passwordText }) => {
+      console.log('Masa erişim ayarları güncellendi:', visibility, passwordText);
+      setSessionState(prev => ({ ...prev, visibility, passwordText }));
     });
 
     socket.on('session-status-updated', ({ status }) => {
@@ -519,6 +523,8 @@ export default function App() {
             participants={participants}
             onKickParticipant={handleKickParticipant}
             lang={lang}
+            visibility={sessionState.visibility}
+            passwordText={sessionState.passwordText}
           />
         )}
 
