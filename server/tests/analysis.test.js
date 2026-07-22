@@ -263,4 +263,22 @@ describe('Matematik ve Kümeleme Motoru Birim Testleri', () => {
     // İlk bileşen ikinciden daha fazla varyans açıklamalı (NIPALS sıralaması)
     expect(varianceExplained[0]).toBeGreaterThanOrEqual(varianceExplained[1]);
   });
+
+  // 6. Alt Kümeleme (Recursive Sub-clustering) Eşik Testi
+  it('calculateKMeans K=2 ile alt kümeleme doğrulaması', () => {
+    const parentCampPoints = [
+      [10, 10], [12, 11], [11, 10], [9, 12], [10, 9],
+      [-10, -10], [-11, -9], [-9, -11], [-12, -10], [-10, -12]
+    ];
+    const { assignments, centroids } = calculateKMeans(parentCampPoints, 2);
+
+    expect(assignments).toHaveLength(10);
+    expect(centroids).toHaveLength(2);
+    const firstGroup = assignments.slice(0, 5);
+    const secondGroup = assignments.slice(5, 10);
+    
+    expect(new Set(firstGroup).size).toBe(1);
+    expect(new Set(secondGroup).size).toBe(1);
+    expect(firstGroup[0]).not.toBe(secondGroup[0]);
+  });
 });

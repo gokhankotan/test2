@@ -8,7 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import { parse } from 'csv-parse/sync';
 import { db } from '../server/database.js';
-import { calculatePCA, runKMeansWithStability, analyzeCampsAndBridges, alignCentroids, calculatePolarisability } from '../server/algorithms.js';
+import { calculatePCA, runKMeansWithStability, analyzeCampsAndBridges, alignCentroids, calculatePolarisability, calculateKMeans } from '../server/algorithms.js';
 import { generateClusterSummary, generateAxisLabel } from '../server/services/llm.service.js';
 
 async function performAnalysisForScript(sessionCode) {
@@ -159,6 +159,42 @@ async function performAnalysisForScript(sessionCode) {
     };
   }));
 
+  // 5b. Alt Kümeleme (Recursive Sub-clustering) Hesapla
+  const subClustersMap = {};
+  const totalParticipants = points.length;
+
+  camps.forEach(camp => {
+    const parentCampId = camp.id;
+    const campPoints = points.filter(pt => pt.campId === parentCampId);
+    const size = campPoints.length;
+
+    // Kamp büyüklüğü >= toplam katılımcının %40'ı VE >= 20 katılımcı ise
+    if (size >= totalParticipants * 0.40 && size >= 20) {
+      const campCoords = campPoints.map(pt => [pt.x, pt.y]);
+      const { assignments, centroids } = calculateKMeans(campCoords, 2);
+
+      const subCamp0Size = assignments.filter(a => a === 0).length;
+      const subCamp1Size = assignments.filter(a => a === 1).length;
+
+      const subCentroids = [
+        { id: 0, x: parseFloat(centroids[0][0].toFixed(2)), y: parseFloat(centroids[0][1].toFixed(2)), size: subCamp0Size },
+        { id: 1, x: parseFloat(centroids[1][0].toFixed(2)), y: parseFloat(centroids[1][1].toFixed(2)), size: subCamp1Size }
+      ];
+
+      const participantAssignments = {};
+      campPoints.forEach((pt, idx) => {
+        participantAssignments[pt.id] = assignments[idx];
+      });
+
+      subClustersMap[parentCampId] = {
+        centroids: subCentroids,
+        assignments: participantAssignments
+      };
+    }
+  });
+
+  const finalSubClusters = Object.keys(subClustersMap).length > 0 ? subClustersMap : null;
+
   // Kutuplaşma Derecesini (Polarisability) yeni formülle hesapla
   const polResult = calculatePolarisability(points, camps);
   const polarisability = polResult.polarisability;
@@ -177,6 +213,7 @@ async function performAnalysisForScript(sessionCode) {
     polarisability,
     insufficientVariance,
     axisLabels: { x: axisLabelX, y: axisLabelY },
+    subClusters: finalSubClusters,
     targetK: session.targetK || 3,
     polarizationHistory: session.polarizationHistory || [],
     varianceExplained,
