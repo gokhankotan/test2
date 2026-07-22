@@ -7,6 +7,7 @@
 import fs from 'fs';
 import path from 'path';
 import { parse } from 'csv-parse/sync';
+import bcrypt from 'bcrypt';
 import { db } from '../server/database.js';
 import { calculatePCA, runKMeansWithStability, analyzeCampsAndBridges, alignCentroids, calculatePolarisability, calculateKMeans } from '../server/algorithms.js';
 import { generateClusterSummary, generateAxisLabel } from '../server/services/llm.service.js';
