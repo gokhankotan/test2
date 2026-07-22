@@ -48,6 +48,13 @@ export default function AdminDashboard({
   const [editSuccess, setEditSuccess] = useState('');
 
   const handleOpenEditModal = (sessionObj) => {
+    // Aynı oturuma tekrar tıklanınca formu kapat (toggle)
+    if (editingSession && editingSession.code === sessionObj.code) {
+      setEditingSession(null);
+      return;
+    }
+    // Aktif oturumu da değiştir
+    if (onSelectSession) onSelectSession(sessionObj.code);
     setEditingSession(sessionObj);
     setEditTitle(sessionObj.title || '');
     setEditDesc(sessionObj.description || '');
@@ -88,11 +95,8 @@ export default function AdminDashboard({
       if (!res.ok) {
         return setEditError(data.message || (lang === 'tr' ? 'Güncelleme hatası.' : 'Update failed.'));
       }
-      setEditSuccess(lang === 'tr' ? 'Oturum başarıyla güncellendi!' : 'Session updated successfully!');
-      setTimeout(() => {
-        setEditingSession(null);
-        window.location.reload();
-      }, 1500);
+      setEditSuccess(lang === 'tr' ? '✅ Oturum başarıyla güncellendi!' : '✅ Session updated successfully!');
+      // Formu kapatma; güncelleme mesajını göster, kullanıcı isterse kapat
     } catch {
       setEditError(lang === 'tr' ? 'Bağlantı hatası oluştu.' : 'Connection error.');
     }
@@ -143,23 +147,105 @@ export default function AdminDashboard({
   return (
     <div className="admin-container" style={{ display: 'flex', flexDirection: 'column', gap: '2rem', maxWidth: '1200px', margin: '0 auto', padding: '0 1rem 3rem 1rem' }}>
       
-      {/* Aktif Yönetilen Oturum Bilgilendirmesi */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(88, 28, 135, 0.15)', border: '1px solid rgba(168, 85, 247, 0.3)', padding: '1rem 1.5rem', borderRadius: 'var(--radius-lg)', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
-            <Shield className="text-secondary" size={22} />
-            {lang === 'tr' ? 'Sistem Yönetim Paneli' : 'System Administration Panel'}
-          </h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginTop: '0.25rem', marginContent: 0, marginBlock: 0 }}>
-            {lang === 'tr' ? 'Oturumları denetleyin, simülasyonları çalıştırın ve yönetin. Oturumu değiştirmek için aşağıdaki listeden seçin.' : 'Monitor, simulate, and manage sessions. Click on a session code below to switch.'}
-          </p>
+      {/* Aktif Yönetilen Oturum Başlık Kartı */}
+      <div style={{ background: 'rgba(88, 28, 135, 0.15)', border: '1px solid rgba(168, 85, 247, 0.3)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <h1 style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
+              <Shield className="text-secondary" size={22} />
+              {lang === 'tr' ? 'Sistem Yönetim Paneli' : 'System Administration Panel'}
+            </h1>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginTop: '0.25rem', marginBlock: 0 }}>
+              {lang === 'tr' ? 'Aşağıdaki listeden oturum seçip "Düzenle" butonuna basarak düzenleme yapın.' : 'Select a session from the list below and click "Edit" to manage it.'}
+            </p>
+          </div>
+          <div style={{ textAlign: 'right', minWidth: '150px' }}>
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', fontWeight: 600 }}>{lang === 'tr' ? 'YÖNETİLEN AKTİF OTURUM' : 'ACTIVELY MANAGED SESSION'}</span>
+            <code style={{ fontSize: '1.2rem', color: '#c084fc', background: 'rgba(0,0,0,0.3)', padding: '0.2rem 0.6rem', borderRadius: '6px', fontWeight: 'bold', display: 'inline-block', marginTop: '0.25rem', border: '1px solid rgba(168, 85, 247, 0.4)' }}>
+              {activeSessionCode}
+            </code>
+          </div>
         </div>
-        <div style={{ textAlign: 'right', minWidth: '150px' }}>
-          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', fontWeight: 600 }}>{lang === 'tr' ? 'YÖNETİLEN AKTİF OTURUM' : 'ACTIVELY MANAGED SESSION'}</span>
-          <code style={{ fontSize: '1.2rem', color: '#c084fc', background: 'rgba(0,0,0,0.3)', padding: '0.2rem 0.6rem', borderRadius: '6px', fontWeight: 'bold', display: 'inline-block', marginTop: '0.25rem', border: '1px solid rgba(168, 85, 247, 0.4)' }}>
-            {activeSessionCode}
-          </code>
-        </div>
+
+        {/* Inline Oturum Düzenleme Formu */}
+        {editingSession && (
+          <div style={{ borderTop: '1px solid rgba(168, 85, 247, 0.25)', padding: '1.5rem', background: 'rgba(0,0,0,0.25)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+              <h2 style={{ fontSize: '1.1rem', color: '#c084fc', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Settings size={18} />
+                {lang === 'tr' ? `Düzenleniyor: ${editingSession.code}` : `Editing: ${editingSession.code}`}
+              </h2>
+              <button
+                onClick={() => setEditingSession(null)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.1rem', cursor: 'pointer', lineHeight: 1 }}
+                title={lang === 'tr' ? 'Formu Kapat' : 'Close Form'}
+              >
+                ✕
+              </button>
+            </div>
+
+            {editError && (
+              <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', padding: '0.6rem 0.8rem', borderRadius: 'var(--radius-md)', fontSize: '0.8rem', color: '#fca5a5', marginBottom: '1rem' }}>
+                {editError}
+              </div>
+            )}
+            {editSuccess && (
+              <div style={{ background: 'rgba(52, 211, 153, 0.1)', border: '1px solid #34d399', padding: '0.6rem 0.8rem', borderRadius: 'var(--radius-md)', fontSize: '0.8rem', color: '#a7f3d0', marginBottom: '1rem' }}>
+                {editSuccess}
+              </div>
+            )}
+
+            <form onSubmit={handleSaveEdit}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">{lang === 'tr' ? 'Masa Başlığı' : 'Title'}</label>
+                  <input type="text" className="form-input" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} required />
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">{lang === 'tr' ? 'Açıklama' : 'Description'}</label>
+                  <input type="text" className="form-input" value={editDesc} onChange={(e) => setEditDesc(e.target.value)} />
+                </div>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '1rem' }}>
+                <label className="form-label">{lang === 'tr' ? 'Müzakere Sorusu' : 'Deliberation Question'}</label>
+                <textarea className="form-textarea" rows={2} value={editQuestion} onChange={(e) => setEditQuestion(e.target.value)} required />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">{lang === 'tr' ? 'Erişim Türü' : 'Access'}</label>
+                  <select className="form-input" value={editVisibility} onChange={(e) => setEditVisibility(e.target.value)} style={{ background: '#110c22', color: '#fff' }}>
+                    <option value="PUBLIC">{lang === 'tr' ? '🌐 Herkese Açık' : '🌐 Public'}</option>
+                    <option value="PASSWORD_PROTECTED">{lang === 'tr' ? '🔒 Şifreli' : '🔒 Protected'}</option>
+                  </select>
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">{lang === 'tr' ? 'Durum' : 'Status'}</label>
+                  <select className="form-input" value={editStatus} onChange={(e) => setEditStatus(e.target.value)} style={{ background: '#110c22', color: '#fff' }}>
+                    <option value="active">{lang === 'tr' ? '▶️ Aktif' : '▶️ Active'}</option>
+                    <option value="paused">{lang === 'tr' ? '⏸️ Durduruldu' : '⏸️ Paused'}</option>
+                  </select>
+                </div>
+                {editVisibility === 'PASSWORD_PROTECTED' && (
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">{lang === 'tr' ? 'Giriş Şifresi' : 'Password'}</label>
+                    <input type="text" className="form-input" value={editPassword} onChange={(e) => setEditPassword(e.target.value)} required={editVisibility === 'PASSWORD_PROTECTED'} placeholder="••••••" />
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                <button type="button" className="btn" onClick={() => setEditingSession(null)} style={{ background: 'transparent', borderColor: 'var(--border-light)', color: 'var(--text-muted)' }}>
+                  {lang === 'tr' ? 'Kapat' : 'Close'}
+                </button>
+                <button type="submit" className="btn" style={{ background: 'var(--color-primary)', minWidth: '160px' }}>
+                  {lang === 'tr' ? '💾 Değişiklikleri Kaydet' : '💾 Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
       </div>
 
       <div className="admin-layout">
@@ -616,142 +702,7 @@ export default function AdminDashboard({
         )}
       </div>
 
-      {/* Oturum Düzenleme Modalı */}
-      {editingSession && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.8)',
-          zIndex: 1000,
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          padding: '1rem'
-        }}>
-          <div className="glass-panel" style={{
-            width: '100%',
-            maxWidth: '550px',
-            border: '1px solid rgba(168, 85, 247, 0.4)',
-            background: '#0d0720',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '1.25rem',
-            padding: '2rem'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontSize: '1.3rem', color: '#c084fc', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Settings size={20} />
-                {lang === 'tr' ? `Oturumu Düzenle: ${editingSession.code}` : `Edit Session: ${editingSession.code}`}
-              </h2>
-              <button 
-                onClick={() => setEditingSession(null)}
-                style={{ background: 'none', border: 'none', color: '#fff', fontSize: '1.25rem', cursor: 'pointer' }}
-              >
-                ✕
-              </button>
-            </div>
 
-            {editError && (
-              <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', padding: '0.6rem 0.8rem', borderRadius: 'var(--radius-md)', fontSize: '0.8rem', color: '#fca5a5' }}>
-                {editError}
-              </div>
-            )}
-            {editSuccess && (
-              <div style={{ background: 'rgba(52, 211, 153, 0.1)', border: '1px solid #34d399', padding: '0.6rem 0.8rem', borderRadius: 'var(--radius-md)', fontSize: '0.8rem', color: '#a7f3d0' }}>
-                {editSuccess}
-              </div>
-            )}
-
-            <form onSubmit={handleSaveEdit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div className="form-group">
-                <label className="form-label">{lang === 'tr' ? 'Masa Başlığı' : 'Table Title'}</label>
-                <input 
-                  type="text" 
-                  className="form-input" 
-                  value={editTitle}
-                  onChange={(e) => setEditTitle(e.target.value)}
-                  required 
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">{lang === 'tr' ? 'Açıklama' : 'Description'}</label>
-                <textarea 
-                  className="form-textarea" 
-                  rows={2}
-                  value={editDesc}
-                  onChange={(e) => setEditDesc(e.target.value)}
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">{lang === 'tr' ? 'Müzakere Sorusu' : 'Deliberation Question'}</label>
-                <textarea 
-                  className="form-textarea" 
-                  rows={2}
-                  value={editQuestion}
-                  onChange={(e) => setEditQuestion(e.target.value)}
-                  required 
-                />
-              </div>
-
-              <div style={{ display: 'flex', gap: '1rem' }}>
-                <div className="form-group" style={{ flex: 1 }}>
-                  <label className="form-label">{lang === 'tr' ? 'Erişim Türü' : 'Access Type'}</label>
-                  <select 
-                    className="form-input" 
-                    value={editVisibility}
-                    onChange={(e) => setEditVisibility(e.target.value)}
-                    style={{ background: '#110c22', color: '#fff' }}
-                  >
-                    <option value="PUBLIC">{lang === 'tr' ? '🌐 Herkese Açık' : '🌐 Public'}</option>
-                    <option value="PASSWORD_PROTECTED">{lang === 'tr' ? '🔒 Şifre Korumalı' : '🔒 Password Protected'}</option>
-                  </select>
-                </div>
-
-                <div className="form-group" style={{ flex: 1 }}>
-                  <label className="form-label">{lang === 'tr' ? 'Durum' : 'Status'}</label>
-                  <select 
-                    className="form-input" 
-                    value={editStatus}
-                    onChange={(e) => setEditStatus(e.target.value)}
-                    style={{ background: '#110c22', color: '#fff' }}
-                  >
-                    <option value="active">{lang === 'tr' ? '▶️ Aktif' : '▶️ Active'}</option>
-                    <option value="paused">{lang === 'tr' ? '⏸️ Durduruldu' : '⏸️ Paused'}</option>
-                  </select>
-                </div>
-              </div>
-
-              {editVisibility === 'PASSWORD_PROTECTED' && (
-                <div className="form-group">
-                  <label className="form-label">{lang === 'tr' ? 'Masa Giriş Şifresi' : 'Table Access Password'}</label>
-                  <input 
-                    type="text" 
-                    className="form-input" 
-                    placeholder={lang === 'tr' ? 'Şifre girin...' : 'Enter password...'}
-                    value={editPassword}
-                    onChange={(e) => setEditPassword(e.target.value)}
-                    required={editVisibility === 'PASSWORD_PROTECTED'}
-                  />
-                </div>
-              )}
-
-              <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setEditingSession(null)} style={{ flex: 1 }}>
-                  {lang === 'tr' ? 'İptal' : 'Cancel'}
-                </button>
-                <button type="submit" className="btn" style={{ flex: 1, background: 'var(--color-primary)' }}>
-                  {lang === 'tr' ? 'Değişiklikleri Kaydet' : 'Save Changes'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
