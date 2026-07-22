@@ -116,6 +116,16 @@ export default function Participant({
 
             {modPanelOpen && (
               <>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1.25rem', paddingBottom: '0.75rem', borderBottom: '1px dashed rgba(168, 85, 247, 0.3)' }}>
+                  <span><strong>{lang === 'tr' ? 'Oturum Kodu:' : 'Session Code:'}</strong> <code style={{ fontSize: '0.9rem', color: '#fff', background: 'rgba(0,0,0,0.3)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>{sessionCode}</code></span>
+                  {visibility === 'PASSWORD_PROTECTED' && passwordText && (
+                    <span><strong>{lang === 'tr' ? 'Masa Şifresi:' : 'Table Password:'}</strong> <code style={{ fontSize: '0.9rem', color: '#c084fc', background: 'rgba(0,0,0,0.3)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>{passwordText}</code></span>
+                  )}
+                  {visibility === 'PUBLIC' && (
+                    <span><strong>{lang === 'tr' ? 'Masa Şifresi:' : 'Table Password:'}</strong> <code style={{ fontSize: '0.9rem', color: 'var(--color-agree)', background: 'rgba(0,0,0,0.3)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>{lang === 'tr' ? 'Herkese Açık' : 'Public'}</code></span>
+                  )}
+                </div>
+
                 {/* Bekleyen Görüşler Kuyruğu */}
                 <div style={{ marginBottom: '1.5rem' }}>
                   <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.75rem', fontWeight: 600 }}>
