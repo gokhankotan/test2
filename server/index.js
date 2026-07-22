@@ -14,7 +14,7 @@ import bcrypt from 'bcrypt';
 
 import { db } from './database.js';
 import { calculatePCA, runKMeansWithStability, analyzeCampsAndBridges, alignCentroids, calculatePolarisability, calculateKMeans } from './algorithms.js';
-import { authenticateAdmin, passwordRateLimiter, checkParticipantAccess, checkModerator, verifySessionToken } from './middleware/auth.middleware.js';
+import { authenticateAdmin, passwordRateLimiter, checkParticipantAccess, checkModerator, verifySessionToken, requireSessionOwnership, isSessionOwner } from './middleware/auth.middleware.js';
 import { generateClusterSummary, evaluateOpinionContent, generateAxisLabel } from './services/llm.service.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -227,40 +227,13 @@ app.post('/api/sessions/:code/join', passwordRateLimiter, async (req, res) => {
 });
 
 // 5. Oturum Ayarları (Şifre ve Görünürlük Değiştirme)
-app.patch('/api/sessions/:code/password', async (req, res) => {
+app.patch('/api/sessions/:code/password', requireSessionOwnership, async (req, res) => {
   const { code } = req.params;
   const { password, visibility } = req.body;
-  const authHeader = req.headers.authorization;
   const upperCode = code.toUpperCase();
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ success: false, message: 'Yetkilendirme token\'ı bulunamadı.' });
-  }
-
-  const token = authHeader.split(' ')[1];
-
   try {
-    const session = await db.getSessionByCode(upperCode);
-    if (!session) {
-      return res.status(404).json({ success: false, message: 'Oturum bulunamadı.' });
-    }
-
-    const decoded = jwt.verify(token, JWT_SECRET);
-    let authorized = false;
-
-    if (decoded.type === 'admin') {
-      if (session.creatorId === decoded.id || !session.creatorId) {
-        authorized = true;
-      }
-    } else if (decoded.type === 'moderator') {
-      if (decoded.sessionCode === upperCode) {
-        authorized = true;
-      }
-    }
-
-    if (!authorized) {
-      return res.status(403).json({ success: false, message: 'Bu oturumun şifresini değiştirmek için yetkiniz yok.' });
-    }
+    const session = req.session;
 
     let newPasswordHash = session.passwordHash;
     if (visibility === 'PASSWORD_PROTECTED' && password) {
@@ -274,7 +247,52 @@ app.patch('/api/sessions/:code/password', async (req, res) => {
 
     res.json({ success: true, message: 'Oturum erişim ayarları başarıyla güncellendi.' });
   } catch (err) {
-    res.status(401).json({ success: false, message: 'Geçersiz yetki token\'ı.' });
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 5.2 Oturum Durumu Değiştirme (Durdurma/Başlatma - Oversight)
+app.patch('/api/sessions/:code/status', async (req, res) => {
+  const { code } = req.params;
+  const { status } = req.body; // active veya paused
+  const authHeader = req.headers.authorization;
+  const upperCode = code.toUpperCase();
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ success: false, message: 'Yetkilendirme token\'ı bulunamadı.' });
+  }
+
+  const token = authHeader.split(' ')[1];
+  const authResult = verifySessionToken(token, upperCode);
+  if (!authResult.isValid) {
+    return res.status(401).json({ success: false, message: authResult.message || 'Geçersiz token.' });
+  }
+
+  // Check: must be either any Admin or the owner moderator of this session
+  let authorized = false;
+  if (authResult.type === 'admin') {
+    authorized = true;
+  } else if (authResult.type === 'moderator') {
+    authorized = true;
+  }
+
+  if (!authorized) {
+    return res.status(403).json({ success: false, message: 'Bu işlem için yetkiniz yok.' });
+  }
+
+  try {
+    const session = await db.getSessionByCode(upperCode);
+    if (!session) {
+      return res.status(404).json({ success: false, message: 'Oturum bulunamadı.' });
+    }
+
+    db.updateSessionStatus(upperCode, status);
+    io.to(`session-${upperCode}`).emit('session-status-updated', { status });
+    io.to(`moderator-${upperCode}`).emit('session-status-updated', { status });
+
+    res.json({ success: true, message: `Oturum durumu ${status} olarak güncellendi.` });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
@@ -322,17 +340,13 @@ app.post('/api/sessions/:code/opinion', checkParticipantAccess, async (req, res)
   }
 });
 
-// 7. Görüş Moderasyon Durumu Değiştirme (HTTP API)
-app.patch('/api/sessions/:code/opinions/:id/status', checkModerator, async (req, res) => {
+app.patch('/api/sessions/:code/opinions/:id/status', requireSessionOwnership, async (req, res) => {
   const { code, id } = req.params;
   const { status } = req.body; // APPROVED veya REJECTED
   const upperCode = code.toUpperCase();
 
   try {
-    const session = db.getSessionSync(upperCode);
-    if (!session) {
-      return res.status(404).json({ success: false, message: 'Oturum bulunamadı.' });
-    }
+    const session = req.session;
 
     let statement = null;
     if (status === 'APPROVED') {
@@ -801,12 +815,19 @@ io.on('connection', (socket) => {
   console.log(`Yeni bağlantı: ${socket.id}`);
 
   // Soket yetki kontrolü yardımcı fonksiyonu
-  const checkSocketAuth = (sessionCode) => {
+  const checkSocketAuth = (sessionCode, requireOwner = false) => {
     const code = sessionCode ? sessionCode.toUpperCase() : 'DEFAULT';
     const authResult = verifySessionToken(socket.adminToken, code);
     if (!authResult.isValid || (authResult.type !== 'admin' && authResult.type !== 'moderator')) {
       socket.emit('auth-error', { message: authResult.message || 'Yetkisiz işlem.' });
       return false;
+    }
+    if (requireOwner) {
+      const session = db.getSessionSync(code);
+      if (!session || !isSessionOwner(authResult.decoded, session)) {
+        socket.emit('auth-error', { message: 'Bu işlem için yetkiniz yok (sahiplik gerekir).' });
+        return false;
+      }
     }
     return true;
   };
@@ -950,7 +971,7 @@ io.on('connection', (socket) => {
   // Görüş Onaylama
   socket.on('admin-approve-statement', ({ sessionCode, statementId }) => {
     const code = sessionCode ? sessionCode.toUpperCase() : 'DEFAULT';
-    if (!checkSocketAuth(code)) return;
+    if (!checkSocketAuth(code, true)) return;
     const statement = db.approveStatement(code, statementId);
     
     if (statement) {
@@ -965,7 +986,7 @@ io.on('connection', (socket) => {
   // Görüş Reddetme
   socket.on('admin-reject-statement', ({ sessionCode, statementId }) => {
     const code = sessionCode ? sessionCode.toUpperCase() : 'DEFAULT';
-    if (!checkSocketAuth(code)) return;
+    if (!checkSocketAuth(code, true)) return;
     const statement = db.rejectStatement(code, statementId);
     
     if (statement) {
@@ -1037,7 +1058,7 @@ io.on('connection', (socket) => {
   // Katılımcıyı Masadan Atma (Kick)
   socket.on('admin-kick-participant', ({ sessionCode, participantId }) => {
     const code = sessionCode ? sessionCode.toUpperCase() : 'DEFAULT';
-    if (!checkSocketAuth(code)) return;
+    if (!checkSocketAuth(code, true)) return;
     const success = db.kickParticipant(code, participantId);
     
     if (success) {
@@ -1059,7 +1080,7 @@ io.on('connection', (socket) => {
   // Kamp Sayısı Güncelleme
   socket.on('admin-update-camps-count', ({ sessionCode, targetK }) => {
     const code = sessionCode ? sessionCode.toUpperCase() : 'DEFAULT';
-    if (!checkSocketAuth(code)) return;
+    if (!checkSocketAuth(code, true)) return;
     const success = db.updateSessionCampsCount(code, targetK);
     if (success) {
       runAndBroadcastAnalysis(code);
@@ -1069,7 +1090,7 @@ io.on('connection', (socket) => {
   // Kamp Yeniden Adlandırma
   socket.on('admin-rename-camp', ({ sessionCode, campId, newName }) => {
     const code = sessionCode ? sessionCode.toUpperCase() : 'DEFAULT';
-    if (!checkSocketAuth(code)) return;
+    if (!checkSocketAuth(code, true)) return;
     const success = db.renameSessionCamp(code, campId, newName);
     if (success) {
       runAndBroadcastAnalysis(code);

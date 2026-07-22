@@ -146,3 +146,56 @@ export async function checkModerator(req, res, next) {
   req.moderator = authResult.decoded;
   next();
 }
+
+/**
+ * Helper to check if a decoded token belongs to the owner of the session.
+ */
+export function isSessionOwner(decoded, session) {
+  if (!decoded || !session) return false;
+  if (decoded.type === 'admin') {
+    return !!session.creatorId && session.creatorId === decoded.id;
+  }
+  if (decoded.type === 'moderator') {
+    return !!decoded.sessionCode && decoded.sessionCode.toUpperCase() === session.code.toUpperCase();
+  }
+  return false;
+}
+
+/**
+ * Middleware to require ownership of the session (creator admin or session moderator).
+ */
+export async function requireSessionOwnership(req, res, next) {
+  const code = req.params.code || req.body.sessionCode;
+  if (!code) {
+    return res.status(400).json({ success: false, message: 'Oturum kodu belirtilmedi.' });
+  }
+
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ success: false, message: 'Yetkilendirme token\'ı bulunamadı.' });
+  }
+
+  const token = authHeader.split(' ')[1];
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const session = await db.getSessionByCode(code.toUpperCase());
+    if (!session) {
+      return res.status(404).json({ success: false, message: 'Oturum bulunamadı.' });
+    }
+
+    const isOwner = isSessionOwner(decoded, session);
+    if (!isOwner) {
+      return res.status(403).json({ success: false, message: 'Bu işlem için yetkiniz yok (sahiplik gerekir).' });
+    }
+
+    req.decoded = decoded;
+    req.session = session;
+    next();
+  } catch (err) {
+    if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
+      return res.status(401).json({ success: false, message: 'Geçersiz veya süresi dolmuş token.' });
+    }
+    return res.status(500).json({ success: false, message: err.message });
+  }
+}
