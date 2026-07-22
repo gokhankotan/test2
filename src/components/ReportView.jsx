@@ -61,6 +61,7 @@ export default function ReportView({ onBack, sessionCode, lang = 'tr' }) {
   const varianceExplained = analysis?.varianceExplained || [];
   const totalVariance = varianceExplained.reduce((s, v) => s + v, 0);
   const showVarianceWarning = !analysis?.insufficientData && !analysis?.insufficientVariance && varianceExplained.length > 0 && totalVariance < 0.40;
+  const ambiguousCount = analysis?.points ? analysis.points.filter(pt => pt.ambiguous).length : 0;
 
   return (
     <div style={{ background: '#f3f4f6', minHeight: '100vh', padding: '2rem 1rem' }}>
@@ -132,6 +133,10 @@ export default function ReportView({ onBack, sessionCode, lang = 'tr' }) {
                     </span>
                   ) : `%${analysis?.polarisability}`
                 )}
+              </div>
+              <div>
+                <strong>{lang === 'tr' ? 'Net Bir Kampa Dahil Olmayan:' : 'Ambiguous Participants:'}</strong>{' '}
+                {ambiguousCount} {lang === 'tr' ? 'katılımcı' : 'participants'}
               </div>
             </div>
             

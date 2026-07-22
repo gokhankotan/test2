@@ -281,4 +281,39 @@ describe('Matematik ve Kümeleme Motoru Birim Testleri', () => {
     expect(new Set(secondGroup).size).toBe(1);
     expect(firstGroup[0]).not.toBe(secondGroup[0]);
   });
+
+  // 7. Aykırı Değer (Ambiguous) Katılımcı Testi
+  it('En yakın iki kamp merkezinin mesafeler oranına göre ambiguous: true/false tespiti', () => {
+    const camps = [
+      { id: 0, x: 50, y: 0 },
+      { id: 1, x: -50, y: 0 }
+    ];
+
+    const ptAmbiguous = { id: 'p1', x: 1, y: 0, ambiguous: false };
+    const ptClear = { id: 'p2', x: 48, y: 0, ambiguous: false };
+    const points = [ptAmbiguous, ptClear];
+
+    points.forEach(pt => {
+      pt.ambiguous = false;
+      if (camps.length >= 2) {
+        const distances = camps.map(camp => {
+          const dx = pt.x - camp.x;
+          const dy = pt.y - camp.y;
+          return Math.sqrt(dx * dx + dy * dy);
+        });
+        distances.sort((a, b) => a - b);
+        const d1 = distances[0];
+        const d2 = distances[1];
+        if (d1 > 1e-5) {
+          const ratio = d2 / d1;
+          if (ratio < 1.2) {
+            pt.ambiguous = true;
+          }
+        }
+      }
+    });
+
+    expect(ptAmbiguous.ambiguous).toBe(true);
+    expect(ptClear.ambiguous).toBe(false);
+  });
 });

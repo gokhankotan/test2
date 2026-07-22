@@ -580,6 +580,27 @@ async function performAnalysis(sessionCode) {
     };
   }));
 
+  // 5a. Aykırı Değer (Ambiguous) Tespiti
+  points.forEach(pt => {
+    pt.ambiguous = false;
+    if (camps.length >= 2) {
+      const distances = camps.map(camp => {
+        const dx = pt.x - camp.x;
+        const dy = pt.y - camp.y;
+        return Math.sqrt(dx * dx + dy * dy);
+      });
+      distances.sort((a, b) => a - b);
+      const d1 = distances[0];
+      const d2 = distances[1];
+      if (d1 > 1e-5) {
+        const ratio = d2 / d1;
+        if (ratio < 1.2) {
+          pt.ambiguous = true;
+        }
+      }
+    }
+  });
+
   // 5b. Alt Kümeleme (Recursive Sub-clustering) Hesapla
   const subClustersMap = {};
   const totalParticipants = points.length;
