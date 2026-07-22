@@ -248,6 +248,83 @@ export default function AdminDashboard({
         )}
       </div>
 
+      {/* Meta-Analiz Tablosu — Sistem Yönetim Paneli'nin Hemen Altında */}
+      <div className="glass-panel" style={{ width: '100%' }}>
+        <h2 style={{ fontSize: '1.25rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          📊 {lang === 'tr' ? 'Oturumlar Arası Meta-Analiz' : 'Cross-Session Meta-Analysis'}
+        </h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.25rem' }}>
+          {lang === 'tr'
+            ? 'Tüm oturumların genel durum özeti. Oturum koduna tıklayarak aktif oturumu değiştirebilir, ⋯ Düzenleme butonuyla düzenleme yapabilirsiniz.'
+            : 'Overview of all sessions. Click a session code to switch, or click ⋯ Edit to modify.'}
+        </p>
+
+        {sessionsOverview.length > 0 ? (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border-light)', color: 'var(--color-primary)' }}>
+                  <th style={{ padding: '0.75rem' }}>{lang === 'tr' ? 'Oturum Kodu' : 'Session Code'}</th>
+                  <th style={{ padding: '0.75rem' }}>{lang === 'tr' ? 'Müzakere Sorusu' : 'Deliberation Question'}</th>
+                  <th style={{ padding: '0.75rem' }}>{lang === 'tr' ? 'Katılımcı Sayısı' : 'Participants'}</th>
+                  <th style={{ padding: '0.75rem' }}>{lang === 'tr' ? 'Görüş Sayısı' : 'Approved Opinions'}</th>
+                  <th style={{ padding: '0.75rem' }}>{lang === 'tr' ? 'Kutuplaşma Derecesi' : 'Polarization Rate'}</th>
+                  <th style={{ padding: '0.75rem' }}>{lang === 'tr' ? 'İşlemler' : 'Actions'}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sessionsOverview.map(s => (
+                  <tr key={s.code} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: activeSessionCode === s.code ? 'rgba(168, 85, 247, 0.05)' : 'transparent' }}>
+                    <td style={{ padding: '0.75rem' }}>
+                      <button
+                        onClick={() => onSelectSession && onSelectSession(s.code)}
+                        className="btn-link"
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: activeSessionCode === s.code ? '#c084fc' : 'var(--color-secondary)',
+                          fontWeight: 'bold',
+                          cursor: 'pointer',
+                          textDecoration: 'underline',
+                          padding: 0,
+                          fontSize: '0.9rem'
+                        }}
+                        title={lang === 'tr' ? 'Yönetmek için bu oturumu seç' : 'Select this session to manage'}
+                      >
+                        {s.code} {activeSessionCode === s.code ? '⭐️' : ''}
+                      </button>
+                    </td>
+                    <td style={{ padding: '0.75rem', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.question}>{s.question}</td>
+                    <td style={{ padding: '0.75rem' }}>{s.participantsCount}</td>
+                    <td style={{ padding: '0.75rem' }}>{s.statementsCount}</td>
+                    <td style={{ padding: '0.75rem' }}>
+                      {s.polarisability !== null && s.polarisability !== undefined
+                        ? `%${Math.round(s.polarisability)}`
+                        : '—'}
+                    </td>
+                    <td style={{ padding: '0.75rem' }}>
+                      <button
+                        onClick={() => handleOpenEditModal(s)}
+                        className="btn"
+                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderColor: editingSession && editingSession.code === s.code ? '#a855f7' : '#c084fc', color: editingSession && editingSession.code === s.code ? '#a855f7' : '#c084fc', minWidth: 'auto', background: editingSession && editingSession.code === s.code ? 'rgba(168,85,247,0.12)' : 'transparent' }}
+                      >
+                        {editingSession && editingSession.code === s.code
+                          ? (lang === 'tr' ? '✕ Kapat' : '✕ Close')
+                          : (lang === 'tr' ? '⚙️ Düzenle' : '⚙️ Edit')}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+            {lang === 'tr' ? 'Yükleniyor veya gösterilecek veri yok.' : 'Loading or no data available.'}
+          </p>
+        )}
+      </div>
+
       <div className="admin-layout">
       {/* Sol Panel: Oturum ve Simülasyon Ayarları */}
       <div className="admin-left-col" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -627,80 +704,7 @@ export default function AdminDashboard({
       </div>
     </div>
 
-      {/* Meta-Analiz Tablosu */}
-      <div className="glass-panel" style={{ width: '100%' }}>
-        <h2 style={{ fontSize: '1.25rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          📊 {lang === 'tr' ? 'Oturumlar Arası Meta-Analiz' : 'Cross-Session Meta-Analysis'}
-        </h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.25rem' }}>
-          {lang === 'tr' 
-            ? 'Sadece adminler tarafından oluşturulmuş aktif oturumların genel durum özeti.' 
-            : 'Overview of active sessions created by administrators.'}
-        </p>
-        
-        {sessionsOverview.length > 0 ? (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem', textAlign: 'left' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--border-light)', color: 'var(--color-primary)' }}>
-                  <th style={{ padding: '0.75rem' }}>{lang === 'tr' ? 'Oturum Kodu' : 'Session Code'}</th>
-                  <th style={{ padding: '0.75rem' }}>{lang === 'tr' ? 'Müzakere Sorusu' : 'Deliberation Question'}</th>
-                  <th style={{ padding: '0.75rem' }}>{lang === 'tr' ? 'Katılımcı Sayısı' : 'Participants'}</th>
-                  <th style={{ padding: '0.75rem' }}>{lang === 'tr' ? 'Görüş Sayısı' : 'Approved Opinions'}</th>
-                  <th style={{ padding: '0.75rem' }}>{lang === 'tr' ? 'Kutuplaşma Derecesi' : 'Polarization Rate'}</th>
-                  <th style={{ padding: '0.75rem' }}>{lang === 'tr' ? 'İşlemler' : 'Actions'}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sessionsOverview.map(s => (
-                  <tr key={s.code} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: activeSessionCode === s.code ? 'rgba(168, 85, 247, 0.05)' : 'transparent' }}>
-                    <td style={{ padding: '0.75rem' }}>
-                      <button 
-                        onClick={() => onSelectSession && onSelectSession(s.code)}
-                        className="btn-link"
-                        style={{ 
-                          background: 'none', 
-                          border: 'none', 
-                          color: activeSessionCode === s.code ? '#c084fc' : 'var(--color-secondary)', 
-                          fontWeight: 'bold', 
-                          cursor: 'pointer', 
-                          textDecoration: 'underline', 
-                          padding: 0,
-                          fontSize: '0.9rem' 
-                        }}
-                        title={lang === 'tr' ? 'Yönetmek için bu oturumu seç' : 'Select this session to manage'}
-                      >
-                        {s.code} {activeSessionCode === s.code ? '⭐️' : ''}
-                      </button>
-                    </td>
-                    <td style={{ padding: '0.75rem', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.question}>{s.question}</td>
-                    <td style={{ padding: '0.75rem' }}>{s.participantsCount}</td>
-                    <td style={{ padding: '0.75rem' }}>{s.statementsCount}</td>
-                    <td style={{ padding: '0.75rem' }}>
-                      {s.polarisability !== null && s.polarisability !== undefined
-                        ? `%${Math.round(s.polarisability)}`
-                        : '—'}
-                    </td>
-                    <td style={{ padding: '0.75rem' }}>
-                      <button 
-                        onClick={() => handleOpenEditModal(s)}
-                        className="btn"
-                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderColor: '#c084fc', color: '#c084fc', minWidth: 'auto', background: 'transparent' }}
-                      >
-                        {lang === 'tr' ? '⚙️ Düzenle' : '⚙️ Edit'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-            {lang === 'tr' ? 'Yükleniyor veya gösterilecek veri yok.' : 'Loading or no data available.'}
-          </p>
-        )}
-      </div>
+
 
 
     </div>
